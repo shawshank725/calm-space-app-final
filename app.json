@@ -19,7 +19,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.calmspace.app",
+      "bundleIdentifier": "com.calmspace.helpdeskapp",
       "infoPlist": {
         "UIBackgroundModes": [
           "remote-notification"
@@ -27,7 +27,7 @@
       }
     },
     "android": {
-      "package": "com.calmspace.app",
+      "package": "com.calmspace.helpdeskapp",
       "versionCode": 1,
       "permissions": [
         "RECORD_AUDIO",

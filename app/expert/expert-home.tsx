@@ -64,6 +64,9 @@ export default function ExpertHome() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadStatus, setUploadStatus] = useState('');
   const [selectedFile, setSelectedFile] = useState<DocumentPicker.DocumentPickerAsset | null>(null);
+  // Stores human-readable info about the picked file to display in the UI
+  const [pickedFileInfo, setPickedFileInfo] = useState<{ uri: string; name: string; mimeType: string; size: string } | null>(null);
+  const [isPickingFile, setIsPickingFile] = useState(false);
   const [uploadForm, setUploadForm] = useState({
     title: '',
     description: '',
@@ -1081,59 +1084,134 @@ export default function ExpertHome() {
     }
   }, [expertRegNo, session?.user?.id]);
 
+  /**
+   * Opens the Android system document picker (Storage Access Framework).
+   * - No runtime storage permissions are requested or needed.
+   * - The user explicitly chooses a file — the only way the app accesses storage.
+   * - Works on Android 11+ with Scoped Storage.
+   * - The file is copied to the app's private cache directory so it can be
+   *   read without any READ_EXTERNAL_STORAGE permission.
+   */
   const handleFileSelection = async () => {
+    // Supported MIME types — the SAF picker will filter to these only.
+    const SUPPORTED_MIME_TYPES = [
+      'application/pdf',
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/gif',
+      'image/webp',
+      'image/heic',
+      'image/heif',
+      'image/*',
+      'video/mp4',
+      'video/quicktime',
+      'video/x-msvideo',
+      'video/webm',
+      'video/x-matroska',
+      'video/*',
+    ];
+
+    setIsPickingFile(true);
     try {
+      // expo-document-picker internally calls Android's ACTION_OPEN_DOCUMENT
+      // intent — the SAF document picker. The user selects the file manually.
+      // copyToCacheDirectory: true copies the file to the app's sandbox cache
+      // so FileSystem can read it without legacy storage permissions.
       const result = await DocumentPicker.getDocumentAsync({
-        type: [
-          // PDF files
-          'application/pdf',
-          // Images - Phone, Laptop, Mac compatible
-          'image/jpeg',
-          'image/jpg',
-          'image/png',
-          'image/gif',
-          'image/webp',
-          'image/heic',
-          'image/heif',
-          'image/*',
-          // Videos - Phone, Laptop, Mac compatible
-          'video/mp4',
-          'video/quicktime', // .mov files (Mac/iPhone)
-          'video/x-msvideo', // .avi
-          'video/webm',
-          'video/x-matroska', // .mkv
-          'video/*'
-        ],
+        type: SUPPORTED_MIME_TYPES,
         copyToCacheDirectory: true,
         multiple: false,
       });
 
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const file = result.assets[0];
-
-        // Check file size (max 200MB for videos, 100MB for others)
-        const isVideo = file.mimeType?.startsWith('video/');
-        const maxSize = isVideo ? 200 * 1024 * 1024 : 100 * 1024 * 1024;
-
-        if (file.size && file.size > maxSize) {
-          Alert.alert(
-            'File Too Large',
-            `Please select a ${isVideo ? 'video' : 'file'} smaller than ${isVideo ? '200MB' : '100MB'}.`
-          );
-          return;
-        }
-
-        setSelectedFile(file);
-
-        // Auto-populate title if empty
-        if (!uploadForm.title.trim() && file.name) {
-          const fileName = file.name.replace(/\.[^/.]+$/, ''); // Remove extension
-          setUploadForm(prev => ({ ...prev, title: fileName }));
-        }
+      // --- Handle cancellation ---
+      if (result.canceled) {
+        console.log('📂 Document picker: user cancelled selection');
+        return; // No action needed — do not clear any previous selection
       }
-    } catch (error) {
-      console.error('Error picking file:', error);
-      Alert.alert('Error', 'Failed to select file. Please try again.');
+
+      if (!result.assets || result.assets.length === 0) {
+        Alert.alert('No File Selected', 'Please select a file to continue.');
+        return;
+      }
+
+      const file = result.assets[0];
+
+      // --- Handle unsupported file types ---
+      const mimeType = file.mimeType || '';
+      const isImage = mimeType.startsWith('image/');
+      const isVideo = mimeType.startsWith('video/');
+      const isPdf = mimeType === 'application/pdf';
+
+      if (!isImage && !isVideo && !isPdf && mimeType !== '') {
+        Alert.alert(
+          '⚠️ Unsupported File Type',
+          `The selected file type (${mimeType || 'unknown'}) is not supported.\n\nPlease select a PDF, image (JPG, PNG, HEIC, GIF, WEBP), or video (MP4, MOV, AVI, WEBM, MKV).`,
+          [{ text: 'OK', style: 'default' }]
+        );
+        return;
+      }
+
+      // --- Size validation ---
+      const maxSize = isVideo ? 200 * 1024 * 1024 : 100 * 1024 * 1024; // 200MB video / 100MB others
+      if (file.size && file.size > maxSize) {
+        Alert.alert(
+          '📦 File Too Large',
+          `Please select a ${isVideo ? 'video' : 'file'} smaller than ${isVideo ? '200MB' : '100MB'}.\n\nSelected file: ${((file.size) / 1024 / 1024).toFixed(2)} MB`
+        );
+        return;
+      }
+
+      // --- Success: store file and populate display info ---
+      setSelectedFile(file);
+
+      // Compute human-readable size
+      const sizeLabel = file.size
+        ? file.size > 1024 * 1024
+          ? `${(file.size / 1024 / 1024).toFixed(2)} MB`
+          : `${(file.size / 1024).toFixed(1)} KB`
+        : 'Unknown size';
+
+      // Store structured file info for UI display (URI, name, type)
+      setPickedFileInfo({
+        uri: file.uri,
+        name: file.name || 'Unnamed file',
+        mimeType: mimeType || 'Unknown type',
+        size: sizeLabel,
+      });
+
+      console.log('✅ File selected via Android document picker:', {
+        name: file.name,
+        uri: file.uri,
+        mimeType: file.mimeType,
+        size: sizeLabel,
+      });
+
+      // Auto-populate title from filename if user hasn't typed one yet
+      if (!uploadForm.title.trim() && file.name) {
+        const baseName = file.name.replace(/\.[^/.]+$/, ''); // strip extension
+        setUploadForm(prev => ({ ...prev, title: baseName }));
+      }
+    } catch (error: any) {
+      console.error('❌ Error opening document picker:', error);
+
+      // Ignore user-abort errors (some devices throw on cancel)
+      if (
+        error?.code === 'DOCUMENT_PICKER_CANCELED' ||
+        error?.message?.includes('canceled') ||
+        error?.message?.includes('cancelled')
+      ) {
+        console.log('📂 Document picker dismissed by user');
+        return;
+      }
+
+      Alert.alert(
+        '❌ Failed to Open File Picker',
+        'Could not open the file picker. Please try again.\n\nIf the problem persists, restart the app.',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setIsPickingFile(false);
     }
   };
 
@@ -1285,6 +1363,7 @@ export default function ExpertHome() {
 
   const openUploadModal = () => {
     setSelectedFile(null);
+    setPickedFileInfo(null);
     setUploadForm({ title: '', description: '', category: 'REMEMBERBETTER' });
     setShowUploadModal(true);
   };
@@ -2092,36 +2171,57 @@ export default function ExpertHome() {
                 {selectedFile ? (
                   <View style={styles.selectedFileContainer}>
                     <View style={styles.selectedFileInfo}>
-                      <Text style={styles.selectedFileIcon}>📄</Text>
+                      <Text style={styles.selectedFileIcon}>
+                        {pickedFileInfo?.mimeType?.startsWith('video/') ? '🎬' :
+                         pickedFileInfo?.mimeType?.startsWith('image/') ? '🖼️' : '📄'}
+                      </Text>
                       <View style={styles.selectedFileDetails}>
-                        <Text style={styles.selectedFileName}>{selectedFile.name}</Text>
+                        {/* File Name */}
+                        <Text style={styles.selectedFileName} numberOfLines={1}>
+                          {pickedFileInfo?.name ?? selectedFile.name}
+                        </Text>
+                        {/* File Size */}
                         <Text style={styles.selectedFileSize}>
-                          {selectedFile.size ? `${(selectedFile.size / 1024 / 1024).toFixed(2)} MB` : 'Unknown size'}
+                          {pickedFileInfo?.size ?? (selectedFile.size ? `${(selectedFile.size / 1024 / 1024).toFixed(2)} MB` : 'Unknown size')}
+                        </Text>
+                        {/* MIME Type */}
+                        <Text style={{ fontSize: 11, color: '#888', marginTop: 1 }}>
+                          Type: {pickedFileInfo?.mimeType ?? selectedFile.mimeType ?? 'Unknown'}
+                        </Text>
+                        {/* URI (truncated for readability) */}
+                        <Text style={{ fontSize: 10, color: '#aaa', marginTop: 2 }} numberOfLines={1}>
+                          URI: {pickedFileInfo?.uri ?? selectedFile.uri}
                         </Text>
                       </View>
                     </View>
                     <TouchableOpacity
                       style={styles.changeFileButton}
                       onPress={handleFileSelection}
+                      disabled={isPickingFile}
                       activeOpacity={0.3}
                       delayPressIn={0}
                     >
-                      <Text style={styles.changeFileButtonText}>Change File</Text>
+                      <Text style={styles.changeFileButtonText}>
+                        {isPickingFile ? 'Opening…' : 'Change File'}
+                      </Text>
                     </TouchableOpacity>
                   </View>
                 ) : (
                   <TouchableOpacity
-                    style={styles.fileUploadButton}
+                    style={[styles.fileUploadButton, isPickingFile && { opacity: 0.6 }]}
                     onPress={handleFileSelection}
+                    disabled={isPickingFile}
                     activeOpacity={0.3}
                     delayPressIn={0}
                   >
-                    <Text style={styles.fileUploadIcon}>📄</Text>
-                    <Text style={styles.fileUploadText}>Select File (Photos, Videos, PDFs)</Text>
+                    <Text style={styles.fileUploadIcon}>{isPickingFile ? '⏳' : '📄'}</Text>
+                    <Text style={styles.fileUploadText}>
+                      {isPickingFile ? 'Opening File Picker…' : 'Select File via Android Picker'}
+                    </Text>
                   </TouchableOpacity>
                 )}
                 <Text style={styles.fileUploadHint}>
-                  Supported: Photos (JPG, PNG, HEIC), Videos (MP4, MOV), PDFs • Max: 100MB (200MB for videos)
+                  Uses Android Storage Access Framework • No storage permissions needed{`\n`}Supported: Photos (JPG, PNG, HEIC), Videos (MP4, MOV), PDFs • Max: 100MB (200MB for videos)
                 </Text>
               </View>
             </ScrollView>

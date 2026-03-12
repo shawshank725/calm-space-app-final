@@ -1,4 +1,7 @@
 {
+  "cli": {
+    "appVersionSource": "remote" 
+  },
   "build": {
     "development": {
       "developmentClient": true,
@@ -17,7 +20,8 @@
       },
       "ios": {
         "buildConfiguration": "Release"
-      }
+      },
+      "autoIncrement": true
     },
     "preview": {
       "channel": "preview",

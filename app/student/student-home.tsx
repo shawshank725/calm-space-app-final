@@ -14,6 +14,7 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as DocumentPicker from 'expo-document-picker';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Animated, Dimensions, Easing, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
@@ -97,6 +98,12 @@ export default function StudentHome() {
   const [dailyMoodEntries, setDailyMoodEntries] = useState<{ [key: string]: { emoji: string, label: string, time: string, scheduled?: string, scheduleKey?: string }[] }>({});
   const [detailedMoodEntries, setDetailedMoodEntries] = useState<{ date: string, emoji: string, label: string, time: string, scheduled?: string, scheduleKey?: string, notes?: string }[]>([]);
   const [todayMoodProgress, setTodayMoodProgress] = useState<{ completed: number, total: number }>({ completed: 0, total: 6 });
+
+  // --- SAF Document Picker states ---
+  const [pickedFileInfo, setPickedFileInfo] = useState<{ uri: string; name: string; mimeType: string; size: string } | null>(null);
+  const [isPickingFile, setIsPickingFile] = useState(false);
+  const [showFileInfoModal, setShowFileInfoModal] = useState(false);
+  // -----------------------------------
 
   const {session } = useAuth();
   const {data:profile } = useProfile(session?.user.id);
@@ -1547,6 +1554,105 @@ export default function StudentHome() {
     }
   };
 
+  /**
+   * Opens the Android system document picker (Storage Access Framework).
+   * No runtime storage permissions are needed — the user explicitly picks a file.
+   * Works on Android 11+ with Scoped Storage.
+   * The file is copied to the app's private cache so no READ_EXTERNAL_STORAGE is required.
+   */
+  const handleFileSelection = async () => {
+    const SUPPORTED_MIME_TYPES = [
+      'application/pdf',
+      'image/jpeg', 'image/jpg', 'image/png', 'image/gif',
+      'image/webp', 'image/heic', 'image/heif', 'image/*',
+      'video/mp4', 'video/quicktime', 'video/x-msvideo',
+      'video/webm', 'video/x-matroska', 'video/*',
+    ];
+
+    setIsPickingFile(true);
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: SUPPORTED_MIME_TYPES,
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+
+      // User cancelled — do nothing
+      if (result.canceled) {
+        console.log('📂 Student picker: user cancelled');
+        return;
+      }
+
+      if (!result.assets || result.assets.length === 0) {
+        Alert.alert('No File Selected', 'Please select a file to continue.');
+        return;
+      }
+
+      const file = result.assets[0];
+      const mimeType = file.mimeType || '';
+      const isImage = mimeType.startsWith('image/');
+      const isVideo = mimeType.startsWith('video/');
+      const isPdf = mimeType === 'application/pdf';
+
+      // Unsupported type check
+      if (!isImage && !isVideo && !isPdf && mimeType !== '') {
+        Alert.alert(
+          '⚠️ Unsupported File Type',
+          `The selected file type (${mimeType}) is not supported.\n\nPlease select a PDF, image (JPG, PNG, HEIC, GIF, WEBP), or video (MP4, MOV, AVI, WEBM, MKV).`,
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+
+      // Size check
+      const maxSize = isVideo ? 200 * 1024 * 1024 : 100 * 1024 * 1024;
+      if (file.size && file.size > maxSize) {
+        Alert.alert(
+          '📦 File Too Large',
+          `Please select a ${isVideo ? 'video' : 'file'} smaller than ${isVideo ? '200MB' : '100MB'}.\n\nSelected: ${(file.size / 1024 / 1024).toFixed(2)} MB`
+        );
+        return;
+      }
+
+      const sizeLabel = file.size
+        ? file.size > 1024 * 1024
+          ? `${(file.size / 1024 / 1024).toFixed(2)} MB`
+          : `${(file.size / 1024).toFixed(1)} KB`
+        : 'Unknown size';
+
+      setPickedFileInfo({
+        uri: file.uri,
+        name: file.name || 'Unnamed file',
+        mimeType: mimeType || 'Unknown type',
+        size: sizeLabel,
+      });
+
+      console.log('✅ Student: file selected via Android document picker:', {
+        name: file.name, uri: file.uri, mimeType, size: sizeLabel,
+      });
+
+      // Show the file info modal
+      setShowFileInfoModal(true);
+    } catch (error: any) {
+      if (
+        error?.code === 'DOCUMENT_PICKER_CANCELED' ||
+        error?.message?.includes('canceled') ||
+        error?.message?.includes('cancelled')
+      ) {
+        console.log('📂 Student picker dismissed by user');
+        return;
+      }
+      console.error('❌ Student: error opening document picker:', error);
+      Alert.alert(
+        '❌ Failed to Open File Picker',
+        'Could not open the file picker. Please try again.',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setIsPickingFile(false);
+    }
+  };
+
   // Export mood data function - Fetch fresh data from database
   const exportMoodData = async () => {
     const userId = session?.user?.id;
@@ -2213,6 +2319,76 @@ export default function StudentHome() {
         </TouchableOpacity>
       </Modal>
 
+      {/* File Info Modal - shown after user picks a file via Android SAF */}
+      <Modal
+        visible={showFileInfoModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowFileInfoModal(false)}
+      >
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.55)' }}>
+          <View style={{ backgroundColor: Colors.white, borderRadius: 24, padding: 28, width: '88%', maxWidth: 400, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 10, borderWidth: 2, borderColor: Colors.primary }}>
+            {/* Header */}
+            <Text style={{ fontSize: 20, fontWeight: 'bold', color: Colors.primary, textAlign: 'center', marginBottom: 4 }}>
+              📂 File Selected
+            </Text>
+            <Text style={{ fontSize: 12, color: Colors.textSecondary, textAlign: 'center', marginBottom: 20 }}>
+              Via Android Storage Access Framework
+            </Text>
+
+            {pickedFileInfo && (
+              <View style={{ backgroundColor: Colors.backgroundLight, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: Colors.border }}>
+                {/* Icon row */}
+                <Text style={{ fontSize: 44, textAlign: 'center', marginBottom: 12 }}>
+                  {pickedFileInfo.mimeType.startsWith('video/') ? '🎬'
+                   : pickedFileInfo.mimeType.startsWith('image/') ? '🖼️' : '📄'}
+                </Text>
+
+                {/* File Name */}
+                <View style={{ flexDirection: 'row', marginBottom: 10 }}>
+                  <Text style={{ width: 70, fontSize: 13, fontWeight: 'bold', color: Colors.text }}>Name</Text>
+                  <Text style={{ flex: 1, fontSize: 13, color: Colors.textSecondary }} numberOfLines={2}>{pickedFileInfo.name}</Text>
+                </View>
+
+                {/* MIME Type */}
+                <View style={{ flexDirection: 'row', marginBottom: 10 }}>
+                  <Text style={{ width: 70, fontSize: 13, fontWeight: 'bold', color: Colors.text }}>Type</Text>
+                  <Text style={{ flex: 1, fontSize: 13, color: Colors.textSecondary }}>{pickedFileInfo.mimeType}</Text>
+                </View>
+
+                {/* Size */}
+                <View style={{ flexDirection: 'row', marginBottom: 10 }}>
+                  <Text style={{ width: 70, fontSize: 13, fontWeight: 'bold', color: Colors.text }}>Size</Text>
+                  <Text style={{ flex: 1, fontSize: 13, color: Colors.textSecondary }}>{pickedFileInfo.size}</Text>
+                </View>
+
+                {/* URI */}
+                <View style={{ flexDirection: 'row' }}>
+                  <Text style={{ width: 70, fontSize: 13, fontWeight: 'bold', color: Colors.text }}>URI</Text>
+                  <Text style={{ flex: 1, fontSize: 11, color: '#aaa' }} numberOfLines={3}>{pickedFileInfo.uri}</Text>
+                </View>
+              </View>
+            )}
+
+            {/* Actions */}
+            <View style={{ flexDirection: 'row', marginTop: 22, gap: 12 }}>
+              <TouchableOpacity
+                style={{ flex: 1, backgroundColor: Colors.backgroundLight, borderRadius: 14, paddingVertical: 13, borderWidth: 1, borderColor: Colors.border }}
+                onPress={() => { setShowFileInfoModal(false); setPickedFileInfo(null); }}
+              >
+                <Text style={{ color: Colors.textSecondary, fontSize: 15, fontWeight: 'bold', textAlign: 'center' }}>Clear</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ flex: 1, backgroundColor: Colors.primary, borderRadius: 14, paddingVertical: 13 }}
+                onPress={() => setShowFileInfoModal(false)}
+              >
+                <Text style={{ color: Colors.white, fontSize: 15, fontWeight: 'bold', textAlign: 'center' }}>Done</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* Notification Modal */}
       <Modal visible={showNotificationModal} animationType="slide" transparent={true}>
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' }}>
@@ -2327,6 +2503,19 @@ export default function StudentHome() {
                 <TouchableOpacity style={{ width: '45%', height: 120, borderRadius: 25, justifyContent: 'center', alignItems: 'center', elevation: 4, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.18, shadowRadius: 5, marginHorizontal: 10, marginVertical: 8, backgroundColor: Colors.white, borderWidth: 2, borderColor: Colors.primary }} onPress={() => router.push(`./message?registration=${studentRegNo}`)}>
                   <Image source={require('@/assets/images/message.png')} style={{ width: 60, height: 60, marginBottom: 8 }} />
                   <Text style={{ color: Colors.primary, fontSize: 12, fontWeight: 'bold', textAlign: 'center' }}>Messages</Text>
+                </TouchableOpacity>
+              </View>
+              {/* 4th row: Access Storage button */}
+              <View style={{ flexDirection: 'row', justifyContent: 'center', width: '100%', marginTop: 10, paddingHorizontal: 10 }}>
+                <TouchableOpacity
+                  style={{ width: '45%', height: 120, borderRadius: 25, justifyContent: 'center', alignItems: 'center', elevation: 4, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.18, shadowRadius: 5, marginHorizontal: 10, marginVertical: 8, backgroundColor: Colors.white, borderWidth: 2, borderColor: Colors.primary, opacity: isPickingFile ? 0.6 : 1 }}
+                  onPress={handleFileSelection}
+                  disabled={isPickingFile}
+                >
+                  <Text style={{ fontSize: 40, marginBottom: 6 }}>{isPickingFile ? '⏳' : '📂'}</Text>
+                  <Text style={{ color: Colors.primary, fontSize: 12, fontWeight: 'bold', textAlign: 'center' }}>
+                    {isPickingFile ? 'Opening…' : 'Access Storage'}
+                  </Text>
                 </TouchableOpacity>
               </View>
             </View>

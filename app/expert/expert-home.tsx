@@ -1,8 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { toByteArray } from 'base64-js';
-import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
@@ -24,6 +21,8 @@ import {
   removeNotificationListeners,
   sendLocalNotification
 } from '@/lib/notificationService';
+import { usePermissions } from '@/lib/useAppPermissions';
+import { PermissionRationaleModal } from '@/components/modals/PermissionRationaleModal';
 
 // Mood tracking constants
 const MOOD_EMOJIS = [
@@ -59,19 +58,6 @@ export default function ExpertHome() {
   const [comments, setComments] = useState<any[]>([]);
   const [newComment, setNewComment] = useState('');
 
-  const [showUploadModal, setShowUploadModal] = useState(false);
-  const [uploadLoading, setUploadLoading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [uploadStatus, setUploadStatus] = useState('');
-  const [selectedFile, setSelectedFile] = useState<DocumentPicker.DocumentPickerAsset | null>(null);
-  // Stores human-readable info about the picked file to display in the UI
-  const [pickedFileInfo, setPickedFileInfo] = useState<{ uri: string; name: string; mimeType: string; size: string } | null>(null);
-  const [isPickingFile, setIsPickingFile] = useState(false);
-  const [uploadForm, setUploadForm] = useState({
-    title: '',
-    description: '',
-    category: 'REMEMBER BETTER',
-  });
 
   const { session } = useAuth();
   const { data: profile } = useProfile(session?.user.id);
@@ -111,10 +97,6 @@ export default function ExpertHome() {
     checkForUpdates();
   }, []);
 
-  // Animation values for upload progress
-  const progressAnim = React.useRef(new Animated.Value(0)).current;
-  const pulseAnim = React.useRef(new Animated.Value(1)).current;
-  const spinAnim = React.useRef(new Animated.Value(0)).current;
 
   // Mood tracking states
   const [moodModalVisible, setMoodModalVisible] = useState(false);
@@ -202,6 +184,13 @@ export default function ExpertHome() {
   }, [bubbleAnimations, startBubbleLoop]);
 
 
+  const { 
+    isRationaleVisible, 
+    setIsRationaleVisible, 
+    requestPermission, 
+    checkPermissionStatus 
+  } = usePermissions();
+
   // Load notifications when expert data is available
   useEffect(() => {
     if (expertRegNo) {
@@ -217,15 +206,9 @@ export default function ExpertHome() {
 
     const initNotifications = async () => {
       try {
-        console.log('📱 Registering expert for notifications...');
-        // Use session user ID (UUID) instead of registration number
-        if (session?.user?.id) {
-          console.log('Expert session available:', session.user.id);
-        } else {
-          console.log('⚠️ No session user ID available for push notifications');
-        }
-
-        // Setup notification listeners with navigation
+        console.log('📱 Checking expert notification permissions...');
+        
+        // Setup notification listeners with navigation (doesn't require permission)
         const subscriptions = setupNotificationListeners(
           (notification) => {
             console.log('🔔 Expert received notification:', notification);
@@ -235,20 +218,23 @@ export default function ExpertHome() {
             const data = response.notification.request.content.data;
 
             // Handle different notification types
-            if (data.type === 'mood_reminder') {
-              // Open mood modal when tapping reminder
+            if (data && data.type === 'mood_reminder') {
               setMoodModalVisible(true);
-            } else if (data.type === 'mood_entry') {
-              // Could navigate to mood history or analytics
-              console.log('Mood entry notification tapped');
             }
           }
         );
 
         notificationSubscriptions = subscriptions;
-        console.log('✅ Expert push notification setup complete');
+
+        // Check if we already have permission
+        const { status } = await checkPermissionStatus('notifications');
+        if (status === 'granted') {
+           console.log('✅ Expert already has notification permissions');
+        } else {
+           console.log('ℹ️ Expert notification permission not granted yet. Will ask just-in-time.');
+        }
       } catch (error) {
-        console.error('❌ Error setting up expert push notifications:', error);
+        console.error('❌ Error setting up expert notification listeners:', error);
       }
     };
 
@@ -261,6 +247,23 @@ export default function ExpertHome() {
       }
     };
   }, [expertRegNo]);
+
+  const handleEnableNotifications = async () => {
+    const { status } = await checkPermissionStatus('notifications');
+    if (status !== 'granted') {
+      setIsRationaleVisible(true);
+    } else {
+      Alert.alert('Info', 'Notifications are already enabled!');
+    }
+  };
+
+  const onRationaleConfirm = async () => {
+    setIsRationaleVisible(false);
+    const granted = await requestPermission('notifications');
+    if (granted) {
+      Alert.alert('Success', 'Notifications enabled!');
+    }
+  };
 
 
   // Notification functions
@@ -1084,289 +1087,6 @@ export default function ExpertHome() {
     }
   }, [expertRegNo, session?.user?.id]);
 
-  /**
-   * Opens the Android system document picker (Storage Access Framework).
-   * - No runtime storage permissions are requested or needed.
-   * - The user explicitly chooses a file — the only way the app accesses storage.
-   * - Works on Android 11+ with Scoped Storage.
-   * - The file is copied to the app's private cache directory so it can be
-   *   read without any READ_EXTERNAL_STORAGE permission.
-   */
-  const handleFileSelection = async () => {
-    // Supported MIME types — the SAF picker will filter to these only.
-    const SUPPORTED_MIME_TYPES = [
-      'application/pdf',
-      'image/jpeg',
-      'image/jpg',
-      'image/png',
-      'image/gif',
-      'image/webp',
-      'image/heic',
-      'image/heif',
-      'image/*',
-      'video/mp4',
-      'video/quicktime',
-      'video/x-msvideo',
-      'video/webm',
-      'video/x-matroska',
-      'video/*',
-    ];
-
-    setIsPickingFile(true);
-    try {
-      // expo-document-picker internally calls Android's ACTION_OPEN_DOCUMENT
-      // intent — the SAF document picker. The user selects the file manually.
-      // copyToCacheDirectory: true copies the file to the app's sandbox cache
-      // so FileSystem can read it without legacy storage permissions.
-      const result = await DocumentPicker.getDocumentAsync({
-        type: SUPPORTED_MIME_TYPES,
-        copyToCacheDirectory: true,
-        multiple: false,
-      });
-
-      // --- Handle cancellation ---
-      if (result.canceled) {
-        console.log('📂 Document picker: user cancelled selection');
-        return; // No action needed — do not clear any previous selection
-      }
-
-      if (!result.assets || result.assets.length === 0) {
-        Alert.alert('No File Selected', 'Please select a file to continue.');
-        return;
-      }
-
-      const file = result.assets[0];
-
-      // --- Handle unsupported file types ---
-      const mimeType = file.mimeType || '';
-      const isImage = mimeType.startsWith('image/');
-      const isVideo = mimeType.startsWith('video/');
-      const isPdf = mimeType === 'application/pdf';
-
-      if (!isImage && !isVideo && !isPdf && mimeType !== '') {
-        Alert.alert(
-          '⚠️ Unsupported File Type',
-          `The selected file type (${mimeType || 'unknown'}) is not supported.\n\nPlease select a PDF, image (JPG, PNG, HEIC, GIF, WEBP), or video (MP4, MOV, AVI, WEBM, MKV).`,
-          [{ text: 'OK', style: 'default' }]
-        );
-        return;
-      }
-
-      // --- Size validation ---
-      const maxSize = isVideo ? 200 * 1024 * 1024 : 100 * 1024 * 1024; // 200MB video / 100MB others
-      if (file.size && file.size > maxSize) {
-        Alert.alert(
-          '📦 File Too Large',
-          `Please select a ${isVideo ? 'video' : 'file'} smaller than ${isVideo ? '200MB' : '100MB'}.\n\nSelected file: ${((file.size) / 1024 / 1024).toFixed(2)} MB`
-        );
-        return;
-      }
-
-      // --- Success: store file and populate display info ---
-      setSelectedFile(file);
-
-      // Compute human-readable size
-      const sizeLabel = file.size
-        ? file.size > 1024 * 1024
-          ? `${(file.size / 1024 / 1024).toFixed(2)} MB`
-          : `${(file.size / 1024).toFixed(1)} KB`
-        : 'Unknown size';
-
-      // Store structured file info for UI display (URI, name, type)
-      setPickedFileInfo({
-        uri: file.uri,
-        name: file.name || 'Unnamed file',
-        mimeType: mimeType || 'Unknown type',
-        size: sizeLabel,
-      });
-
-      console.log('✅ File selected via Android document picker:', {
-        name: file.name,
-        uri: file.uri,
-        mimeType: file.mimeType,
-        size: sizeLabel,
-      });
-
-      // Auto-populate title from filename if user hasn't typed one yet
-      if (!uploadForm.title.trim() && file.name) {
-        const baseName = file.name.replace(/\.[^/.]+$/, ''); // strip extension
-        setUploadForm(prev => ({ ...prev, title: baseName }));
-      }
-    } catch (error: any) {
-      console.error('❌ Error opening document picker:', error);
-
-      // Ignore user-abort errors (some devices throw on cancel)
-      if (
-        error?.code === 'DOCUMENT_PICKER_CANCELED' ||
-        error?.message?.includes('canceled') ||
-        error?.message?.includes('cancelled')
-      ) {
-        console.log('📂 Document picker dismissed by user');
-        return;
-      }
-
-      Alert.alert(
-        '❌ Failed to Open File Picker',
-        'Could not open the file picker. Please try again.\n\nIf the problem persists, restart the app.',
-        [{ text: 'OK' }]
-      );
-    } finally {
-      setIsPickingFile(false);
-    }
-  };
-
-  const handleFileUpload = async () => {
-    // Validate inputs
-    if (!uploadForm.title.trim()) {
-      Alert.alert('Error', 'Please enter a title');
-      return;
-    }
-
-    if (!uploadForm.description.trim()) {
-      Alert.alert('Error', 'Please enter a description');
-      return;
-    }
-
-    if (!selectedFile) {
-      Alert.alert('Error', 'Please select a file');
-      return;
-    }
-
-    try {
-      setUploadLoading(true);
-      setUploadStatus('Reading file...');
-      setUploadProgress(20);
-
-      // Step 1: Read file as base64
-      const base64Data = await FileSystem.readAsStringAsync(selectedFile.uri, {
-        encoding: 'base64' as any,
-      });
-
-      setUploadProgress(40);
-      setUploadStatus('Converting file...');
-
-      // Step 2: Convert base64 to bytes
-      const fileBytes = toByteArray(base64Data);
-
-      setUploadProgress(50);
-      setUploadStatus('Uploading to storage...');
-
-      // Step 3: Create unique filename
-      const timestamp = Date.now();
-      const fileExtension = selectedFile.name.split('.').pop() || 'file';
-      const storagePath = `${expertRegNo}/${timestamp}.${fileExtension}`;
-
-      // Step 4: Upload to Supabase Storage 'resources' bucket
-      const { error: uploadError } = await supabase.storage
-        .from('resources')
-        .upload(storagePath, fileBytes, {
-          contentType: selectedFile.mimeType || 'application/octet-stream',
-          upsert: false,
-        });
-
-      if (uploadError) {
-        throw new Error(`Storage upload failed: ${uploadError.message}`);
-      }
-
-      setUploadProgress(70);
-      setUploadStatus('Getting file URL...');
-
-      // Step 5: Get public URL
-      const { data: urlData } = supabase.storage
-        .from('resources')
-        .getPublicUrl(storagePath);
-
-      if (!urlData?.publicUrl) {
-        throw new Error('Failed to get file URL');
-      }
-
-      setUploadProgress(85);
-      setUploadStatus('Saving to database...');
-
-      // Step 6: Determine category
-      let category = 'DOCUMENTS';
-      if (selectedFile.mimeType?.startsWith('video/')) {
-        category = 'VIDEOS';
-      } else if (selectedFile.mimeType?.startsWith('audio/')) {
-        category = 'AUDIO';
-      } else if (selectedFile.mimeType?.startsWith('image/')) {
-        category = 'IMAGES';
-      }
-
-      // Step 7: Insert into library table
-      const { error: dbError } = await supabase
-        .from('library')
-        .insert({
-          resource_title: uploadForm.title,
-          description: uploadForm.description,
-          file_url: urlData.publicUrl,
-          category: category,
-          file_type: selectedFile.mimeType,
-        });
-
-      if (dbError) {
-        // Clean up uploaded file
-        await supabase.storage.from('resources').remove([storagePath]);
-        throw new Error(`Database error: ${dbError.message}`);
-      }
-
-      setUploadProgress(100);
-      setUploadStatus('Complete!');
-
-      // Success - wait briefly then show success message
-      await new Promise(resolve => setTimeout(resolve, 300));
-
-      const fileSize = selectedFile.size
-        ? `${(selectedFile.size / 1024 / 1024).toFixed(2)} MB`
-        : 'Unknown size';
-
-      Alert.alert(
-        'Upload Successful',
-        `${uploadForm.title}\n\nFile: ${selectedFile.name}\nSize: ${fileSize}\nCategory: ${category}\n\nResource is now available in the library!`,
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              // Reset form
-              setShowUploadModal(false);
-              setSelectedFile(null);
-              setUploadForm({
-                title: '',
-                description: '',
-                category: 'Academic Resources'
-              });
-              setUploadStatus('');
-              setUploadProgress(0);
-            }
-          }
-        ]
-      );
-
-    } catch (error) {
-      console.error('Upload error:', error);
-      setUploadStatus('');
-      setUploadProgress(0);
-
-      const errorMessage = error instanceof Error
-        ? error.message
-        : 'Unknown error occurred';
-
-      Alert.alert(
-        'Upload Failed',
-        `Could not upload file.\n\n${errorMessage}\n\nPlease check:\n• Internet connection\n• File is not corrupted\n• Storage bucket "resources" exists in Supabase`,
-        [{ text: 'OK' }]
-      );
-    } finally {
-      setUploadLoading(false);
-    }
-  };
-
-  const openUploadModal = () => {
-    setSelectedFile(null);
-    setPickedFileInfo(null);
-    setUploadForm({ title: '', description: '', category: 'REMEMBERBETTER' });
-    setShowUploadModal(true);
-  };
 
   // Mood Calendar Component
   const MoodCalendar = () => {
@@ -2013,13 +1733,6 @@ export default function ExpertHome() {
             <View style={styles.buttonRow}>
               <TouchableOpacity
                 style={styles.matrixButton}
-                onPress={openUploadModal}
-              >
-                <Text style={styles.buttonIcon}>📁</Text>
-                <Text style={styles.matrixButtonText}>Upload Resources</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.matrixButton}
                 onPress={() => router.push("/expert/schedule")}
               >
                 <Text style={styles.buttonIcon}>📅</Text>
@@ -2078,6 +1791,15 @@ export default function ExpertHome() {
             {/* Manual add removed for automatic mood checks */}
           </View>
         </ScrollView>
+        <PermissionRationaleModal
+        isVisible={isRationaleVisible}
+        onConfirm={onRationaleConfirm}
+        onCancel={() => setIsRationaleVisible(false)}
+        title="Notifications Service"
+        description="We use notifications to send you mood track reminders, community updates, and emergency alerts. You can customize these in settings."
+        iconName="notifications"
+        buttonText="Enable Notifications"
+      />
       </View>
     );
 
@@ -2094,201 +1816,6 @@ export default function ExpertHome() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: Colors.background }}>
       {Content}
-
-      {/* Upload Modal */}
-      <Modal
-        visible={showUploadModal}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setShowUploadModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>📁 Upload Learning Resource</Text>
-              <TouchableOpacity
-                onPress={() => setShowUploadModal(false)}
-                style={styles.modalCloseButton}
-                activeOpacity={0.3}
-                delayPressIn={0}
-              >
-                <Text style={styles.modalCloseText}>✕</Text>
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={styles.modalBody}>
-              <View style={styles.formGroup}>
-                <Text style={styles.formLabel}>Resource Title *</Text>
-                <TextInput
-                  style={styles.formInput}
-                  placeholder="Enter resource title..."
-                  value={uploadForm.title}
-                  onChangeText={(text) => setUploadForm(prev => ({ ...prev, title: text }))}
-                  maxLength={100}
-                />
-              </View>
-
-              <View style={styles.formGroup}>
-                <Text style={styles.formLabel}>Description *</Text>
-                <TextInput
-                  style={[styles.formInput, styles.formTextArea]}
-                  placeholder="Describe the learning resource..."
-                  value={uploadForm.description}
-                  onChangeText={(text) => setUploadForm(prev => ({ ...prev, description: text }))}
-                  multiline
-                  numberOfLines={4}
-                  maxLength={500}
-                />
-              </View>
-
-              <View style={styles.formGroup}>
-                <Text style={styles.formLabel}>Category</Text>
-                <View style={styles.categorySelector}>
-                  {categories.map((category) => (
-                    <TouchableOpacity
-                      key={category}
-                      style={[
-                        styles.categoryOption,
-                        uploadForm.category === category && styles.selectedCategoryOption
-                      ]}
-                      onPress={() => setUploadForm(prev => ({ ...prev, category }))}
-                      activeOpacity={0.3}
-                      delayPressIn={0}
-                    >
-                      <Text style={[
-                        styles.categoryOptionText,
-                        uploadForm.category === category && styles.selectedCategoryOptionText
-                      ]}>
-                        {category}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-
-              <View style={styles.fileUploadSection}>
-                <Text style={styles.formLabel}>File Upload *</Text>
-                {selectedFile ? (
-                  <View style={styles.selectedFileContainer}>
-                    <View style={styles.selectedFileInfo}>
-                      <Text style={styles.selectedFileIcon}>
-                        {pickedFileInfo?.mimeType?.startsWith('video/') ? '🎬' :
-                         pickedFileInfo?.mimeType?.startsWith('image/') ? '🖼️' : '📄'}
-                      </Text>
-                      <View style={styles.selectedFileDetails}>
-                        {/* File Name */}
-                        <Text style={styles.selectedFileName} numberOfLines={1}>
-                          {pickedFileInfo?.name ?? selectedFile.name}
-                        </Text>
-                        {/* File Size */}
-                        <Text style={styles.selectedFileSize}>
-                          {pickedFileInfo?.size ?? (selectedFile.size ? `${(selectedFile.size / 1024 / 1024).toFixed(2)} MB` : 'Unknown size')}
-                        </Text>
-                        {/* MIME Type */}
-                        <Text style={{ fontSize: 11, color: '#888', marginTop: 1 }}>
-                          Type: {pickedFileInfo?.mimeType ?? selectedFile.mimeType ?? 'Unknown'}
-                        </Text>
-                        {/* URI (truncated for readability) */}
-                        <Text style={{ fontSize: 10, color: '#aaa', marginTop: 2 }} numberOfLines={1}>
-                          URI: {pickedFileInfo?.uri ?? selectedFile.uri}
-                        </Text>
-                      </View>
-                    </View>
-                    <TouchableOpacity
-                      style={styles.changeFileButton}
-                      onPress={handleFileSelection}
-                      disabled={isPickingFile}
-                      activeOpacity={0.3}
-                      delayPressIn={0}
-                    >
-                      <Text style={styles.changeFileButtonText}>
-                        {isPickingFile ? 'Opening…' : 'Change File'}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : (
-                  <TouchableOpacity
-                    style={[styles.fileUploadButton, isPickingFile && { opacity: 0.6 }]}
-                    onPress={handleFileSelection}
-                    disabled={isPickingFile}
-                    activeOpacity={0.3}
-                    delayPressIn={0}
-                  >
-                    <Text style={styles.fileUploadIcon}>{isPickingFile ? '⏳' : '📄'}</Text>
-                    <Text style={styles.fileUploadText}>
-                      {isPickingFile ? 'Opening File Picker…' : 'Select File via Android Picker'}
-                    </Text>
-                  </TouchableOpacity>
-                )}
-                <Text style={styles.fileUploadHint}>
-                  Uses Android Storage Access Framework • No storage permissions needed{`\n`}Supported: Photos (JPG, PNG, HEIC), Videos (MP4, MOV), PDFs • Max: 100MB (200MB for videos)
-                </Text>
-              </View>
-            </ScrollView>
-
-            <View style={styles.modalFooter}>
-              <TouchableOpacity
-                style={styles.modalCancelButton}
-                onPress={() => setShowUploadModal(false)}
-                activeOpacity={0.3}
-                delayPressIn={0}
-              >
-                <Text style={styles.modalCancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.modalUploadButton, uploadLoading && styles.modalUploadButtonDisabled]}
-                onPress={handleFileUpload}
-                disabled={uploadLoading || !selectedFile || !uploadForm.title.trim() || !uploadForm.description.trim()}
-                activeOpacity={0.3}
-                delayPressIn={0}
-              >
-                {uploadLoading ? (
-                  <View style={styles.uploadLoadingContainer}>
-                    <Animated.View
-                      style={[
-                        styles.spinnerContainer,
-                        {
-                          transform: [
-                            {
-                              rotate: spinAnim.interpolate({
-                                inputRange: [0, 1],
-                                outputRange: ['0deg', '360deg'],
-                              }),
-                            },
-                            { scale: pulseAnim },
-                          ],
-                        },
-                      ]}
-                    >
-                      <Text style={styles.spinnerIcon}>🚀</Text>
-                    </Animated.View>
-                    <View style={styles.uploadProgressInfo}>
-                      <Text style={styles.uploadStatusText}>{uploadStatus}</Text>
-                      <View style={styles.progressBarContainer}>
-                        <Animated.View
-                          style={[
-                            styles.progressBarFill,
-                            {
-                              width: progressAnim.interpolate({
-                                inputRange: [0, 100],
-                                outputRange: ['0%', '100%'],
-                              }),
-                            },
-                          ]}
-                        />
-                      </View>
-                      <Text style={styles.uploadPercentText}>{uploadProgress}%</Text>
-                    </View>
-                  </View>
-                ) : (
-                  <Text style={styles.modalUploadButtonText}>🚀 Upload Resource</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
 
       {/* Mood Modal */}
          <Modal visible={moodModalVisible} animationType="slide" transparent={true} onRequestClose={() => setMoodModalVisible(false)}>
@@ -3622,97 +3149,6 @@ const styles = StyleSheet.create({
     borderRadius: 25,
     flex: 0.55,
     alignItems: 'center',
-  },
-  modalUploadButtonDisabled: {
-    backgroundColor: Colors.buttonDisabled,
-  },
-  modalUploadButtonText: {
-    color: Colors.white,
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  uploadLoadingContainer: {
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: 12,
-    width: '100%',
-    paddingVertical: 8,
-  },
-  spinnerContainer: {
-    marginBottom: 8,
-  },
-  spinnerIcon: {
-    fontSize: 32,
-  },
-  uploadProgressInfo: {
-    width: '100%',
-    alignItems: 'center',
-    gap: 6,
-  },
-  uploadStatusText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  progressBarContainer: {
-    width: '90%',
-    height: 6,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  progressBarFill: {
-    height: '100%',
-    backgroundColor: '#ffffff',
-    borderRadius: 3,
-  },
-  uploadPercentText: {
-    color: '#ffffff',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  selectedFileContainer: {
-    backgroundColor: Colors.backgroundLight,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 10,
-    padding: 15,
-    marginBottom: 8,
-  },
-  selectedFileInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  selectedFileIcon: {
-    fontSize: 24,
-    marginRight: 12,
-  },
-  selectedFileDetails: {
-    flex: 1,
-  },
-  selectedFileName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Colors.text,
-    marginBottom: 4,
-  },
-  selectedFileSize: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-  },
-  changeFileButton: {
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    borderRadius: 20,
-    alignSelf: 'flex-start',
-  },
-  changeFileButtonText: {
-    color: Colors.white,
-    fontSize: 14,
-    fontWeight: '600',
   },
   // 2x2 Button Matrix Styles
   buttonMatrix: {

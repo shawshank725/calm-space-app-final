@@ -56,7 +56,7 @@ export default function TermsPage() {
           }}
         >
           <Text style={[globalStyles.body, { fontSize: 18, lineHeight: 26, color: Colors.text }]}>
-            Welcome to C.A.L.M Space!
+            Welcome to Calm Space!
             {"\n\n"}
             By using this app, you agree to the following terms and conditions:
             {"\n\n"}

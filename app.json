@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "C.A.L.M Space",
+    "name": "Calm Space",
     "slug": "calm-space",
     "orientation": "portrait",
     "icon": "./assets/images/logo2.png",
@@ -28,11 +28,6 @@
     "android": {
       "package": "com.calmspace.helpdeskapp",
       "permissions": [
-        "RECORD_AUDIO",
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE",
-        "CAMERA",
-        "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS",
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.RECEIVE_BOOT_COMPLETED",
@@ -85,7 +80,7 @@
           "color": "#FFB347",
           "mode": "production",
           "androidMode": "default",
-          "androidCollapsedTitle": "C.A.L.M Space"
+          "androidCollapsedTitle": "Calm Spaces"
         }
       ],
       "expo-audio",

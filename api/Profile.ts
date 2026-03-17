@@ -1,6 +1,8 @@
 import { supabase } from "@/lib/supabase";
 import { Profile } from "@/types/Profile";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { router } from "expo-router";
+import { Alert } from "react-native";
 import Toast from "react-native-toast-message";
 
 
@@ -128,6 +130,56 @@ export const getAllUsernames = async () => {
     console.error('Exception fetching usernames:', err);
     return [];
   }
+};
+
+export const useDeleteAccount = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (userId: string) => {
+      console.log(`🧹 Comprehensive data wipe for user: ${userId}`);
+
+      // 1. Delete Student Locations
+      await supabase.from("student_locations").delete().eq("profile_id", userId);
+
+      // 2. Delete Messages
+      await supabase.from("messages").delete().or(`sender_id.eq.${userId},receiver_id.eq.${userId}`);
+
+      // 3. Delete Community Data
+      await supabase.from("community_post").delete().eq("user_id", userId);
+      await supabase.from("post_comment").delete().eq("user_id", userId);
+
+      // 4. Delete Booking Requests
+      await supabase.from("book_request").delete().eq("student_id", userId);
+
+      // 5. Clear Expert/Peer slots if this user was an expert/peer
+      await supabase.from("expert_schedule").delete().eq("expert_id", userId);
+      await supabase.from("student_schedule").delete().eq("peer_id", userId);
+
+      // 6. Delete Profile
+      const { error: profileError } = await supabase.from("profiles").delete().eq("id", userId);
+      if (profileError) throw new Error(profileError.message);
+
+      // 7. Sign out locally
+      await supabase.auth.signOut();
+
+      return { success: true };
+    },
+    onSuccess: () => {
+      queryClient.clear();
+      Toast.show({
+        type: 'success',
+        text1: 'Account Deleted',
+        text2: 'All your data has been permanently removed.',
+        position: 'bottom',
+      });
+      router.replace("/");
+    },
+    onError: (error: any) => {
+      console.error('❌ Error deleting account:', error);
+      Alert.alert('Error', 'Failed to delete account data. Please contact support.');
+    }
+  });
 };
 
 

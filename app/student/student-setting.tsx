@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Alert, Animated, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Colors } from '@/constants/Colors';
 import { useAuth } from '@/providers/AuthProvider';
-import { useProfile, useUpdateProfilePicture } from '@/api/Profile';
+import { useProfile, useUpdateProfilePicture, useDeleteAccount } from '@/api/Profile';
 import { handleLogout } from '@/api/OtherMethods';
 
 const profilePics = [
@@ -34,6 +34,7 @@ export default function StudentSetting() {
   const { session } = useAuth();
   const { data: profile, isLoading } = useProfile(session?.user.id);
   const updateProfilePicture = useUpdateProfilePicture();
+  const deleteAccount = useDeleteAccount();
 
   // Load profile picture from Supabase (with AsyncStorage fallback)
   useEffect(() => {
@@ -81,6 +82,44 @@ export default function StudentSetting() {
       console.error('❌ Error saving profile pic:', error);
       Alert.alert('Error', 'Failed to save profile picture');
     }
+  };
+
+  // Handle Account Deletion logic (Compliance Requirement)
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      '⚠️ Delete All Data?',
+      'This will permanently delete your profile, journals, mood history, and all account data. This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Delete Everything', 
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // 1. Clear local journaling data
+              await AsyncStorage.multiRemove([
+                'journal_text',
+                'gratitude_entries',
+                'journal_dark_mode',
+                'journal_background'
+              ]);
+              
+              // 2. Clear profile pic from local
+              if (profile?.id) {
+                await AsyncStorage.removeItem(`profilePic_${profile.id}`);
+              }
+
+              // 3. Trigger remote data wipe
+              if (session?.user.id) {
+                await deleteAccount.mutateAsync(session.user.id);
+              }
+            } catch (error) {
+              console.error('❌ Error during data wipe:', error);
+            }
+          }
+        }
+      ]
+    );
   };
 
   // Fade in animation for profile picture
@@ -218,6 +257,15 @@ export default function StudentSetting() {
         <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
           <Ionicons name="log-out-outline" size={20} color={Colors.error} />
           <Text style={styles.logoutText}>Logout</Text>
+        </TouchableOpacity>
+
+        {/* Delete Account Button (Compliance Required) */}
+        <TouchableOpacity 
+          style={[styles.logoutBtn, { marginTop: 40, borderColor: '#ff4d4d', backgroundColor: '#fff5f5' }]} 
+          onPress={handleDeleteAccount}
+        >
+          <Ionicons name="trash-outline" size={20} color="#ff4d4d" />
+          <Text style={[styles.logoutText, { color: '#ff4d4d' }]}>Delete Account & Data</Text>
         </TouchableOpacity>
       </View>
       </ScrollView>

@@ -227,8 +227,7 @@ useEffect(() => {
       </View>
 
       <Image source={require('../assets/images/icon.png')} style={styles.logo} />
-      <Text style={styles.mainTitle}>C.A.L.M</Text>
-      <Text style={styles.subTitle}>Spaces</Text>
+      <Text style={styles.mainTitle}>Calm Space</Text>
 
       <View style={styles.buttonContainer}>
         <TouchableOpacity style={styles.loginButton} onPress={() => setLoginModalVisible(true)}>
@@ -285,7 +284,6 @@ const styles = StyleSheet.create({
   container: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: 'white' },
   logo: { width: 400, height: 250, marginLeft: 5 },
   mainTitle: { textAlign: 'center', fontSize: 80, fontWeight: '600', color: '#4F21A2', fontFamily: 'Agbalumo', letterSpacing: -1 },
-  subTitle: { marginTop: -19, textAlign: 'center', fontSize: 60, color: '#4F21A2', fontFamily: 'Agbalumo' },
   buttonContainer: { marginTop: 40, width: '80%', alignItems: 'center' },
   loginButton: { backgroundColor: '#4F21A2', paddingVertical: 15, paddingHorizontal: 40, borderRadius: 25, marginBottom: 15, width: '100%', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 3.84, elevation: 5 },
   loginButtonText: { color: 'white', fontSize: 18, fontWeight: 'bold', fontFamily: 'Tinos' },

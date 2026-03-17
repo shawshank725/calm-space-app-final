@@ -39,17 +39,11 @@ export async function registerForPushNotificationsAsync(userId: string): Promise
       return null;
     }
 
-    // Request permissions
-    const { status: existingStatus } = await Notifications.getPermissionsAsync();
-    let finalStatus = existingStatus;
-
-    if (existingStatus !== 'granted') {
-      const { status } = await Notifications.requestPermissionsAsync();
-      finalStatus = status;
-    }
-
-    if (finalStatus !== 'granted') {
-      console.log('Failed to get push token for push notification!');
+    // Check permissions but don't request them here
+    const { status } = await Notifications.getPermissionsAsync();
+    
+    if (status !== 'granted') {
+      console.log('Push notification permission not granted. Skipping token registration.');
       return null;
     }
 

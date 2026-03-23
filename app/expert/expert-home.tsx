@@ -2326,7 +2326,7 @@ export default function ExpertHome() {
                   onPress={pickMedia}
                 >
                   <Ionicons name="images" size={24} color={Colors.primary} />
-                  <Text style={{ color: Colors.text, marginTop: 5 }}>Add Photo/Video</Text>
+                  <Text style={{ color: 'white', marginTop: 5 }}>Select Image/Video</Text>
                 </TouchableOpacity>
 
                 <View style={{ flexDirection: 'row', gap: 10 }}>

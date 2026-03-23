@@ -1202,7 +1202,7 @@ export default function AdminHome() {
                 onPress={pickMedia}
               >
                 <Ionicons name="images" size={24} color="#FFB347" />
-                <Text style={{ color: 'white', marginTop: 5 }}>Add Photo/Video</Text>
+                <Text style={{ color: 'white', marginTop: 5 }}>Select Image/Video</Text>
               </TouchableOpacity>
               
               <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -1327,7 +1327,7 @@ export default function AdminHome() {
                 onPress={pickMedia}
               >
                 <Ionicons name="images" size={24} color="#FFB347" />
-                <Text style={{ color: 'white', marginTop: 5 }}>Change Photo/Video</Text>
+                <Text style={{ color: 'white', marginTop: 5 }}>Change Image/Video</Text>
               </TouchableOpacity>
               
               <View style={{ flexDirection: 'row', gap: 10 }}>

@@ -922,7 +922,7 @@ export default function BuddyConnect() {
                   fontWeight: '600',
                   marginTop: 8,
                 }}>
-                  image/videos
+                  Select Image/Video
                 </Text>
               </TouchableOpacity>
             </View>

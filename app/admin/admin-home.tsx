@@ -107,19 +107,23 @@ export default function AdminHome() {
               phone: profile.phone_number || 'N/A',
               dob: profile.date_of_birth || 'N/A',
               details: 'N/A',
-              category: profile.type.toLowerCase()
+              category: profile.type?.toLowerCase() || 'student'
             });
           });
         }
 
-        // Sort by type first (Students, Experts, Peer Listeners), then by status (online first), then by name
+        // Sort by type first (Students, Experts, Peer Listeners), then by name
         allUsers.sort((a, b) => {
           if (a.type !== b.type) {
-            const typeOrder: { [key: string]: number } = { 'Student': 1, 'Expert': 2, 'Peer Listener': 3 };
-            return typeOrder[a.type] - typeOrder[b.type];
-          }
-          if (a.status !== b.status) {
-            return a.status === 'Online' ? -1 : 1;
+            const typeOrder: { [key: string]: number } = { 
+              'STUDENT': 1, 
+              'EXPERT': 2, 
+              'PEER': 3,
+              'ADMIN': 4 
+            };
+            const orderA = typeOrder[a.type as string] || 99;
+            const orderB = typeOrder[b.type as string] || 99;
+            return orderA - orderB;
           }
           return a.name.localeCompare(b.name);
         });

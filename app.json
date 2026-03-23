@@ -6,7 +6,6 @@
     "icon": "./assets/images/logo2.png",
     "scheme": "calmspace",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "updates": {
       "enabled": true,
       "checkAutomatically": "ON_LOAD",
@@ -19,6 +18,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.calmspace.helpdeskapp",
+      "privacyPolicyUrl": "https://calmspace.helpdeskapp.com/privacy-policy",
       "infoPlist": {
         "UIBackgroundModes": [
           "remote-notification"
@@ -27,16 +27,13 @@
     },
     "android": {
       "package": "com.calmspace.helpdeskapp",
+      "privacyPolicyUrl": "https://calmspace.helpdeskapp.com/privacy-policy",
       "permissions": [
         "android.permission.MODIFY_AUDIO_SETTINGS",
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.VIBRATE"
       ],
-      "blockedPermissions": [
-    "android.permission.READ_MEDIA_IMAGES",
-    "android.permission.READ_MEDIA_VIDEO"
-  ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/logo2.png",
         "backgroundColor": "#ffffff"
@@ -106,7 +103,6 @@
         "projectId": "88be55dd-c9ff-438f-9d01-9348d7b0dd7c"
       }
     },
-    "owner": "helpdeskcalms-organization",
-    "privacyPolicyUrl": "https://your-domain.com/privacy-policy"
+    "owner": "helpdeskcalms-organization"
   }
 }

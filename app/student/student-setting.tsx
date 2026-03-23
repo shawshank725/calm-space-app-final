@@ -247,6 +247,12 @@ export default function StudentSetting() {
           </View>
         </View>
 
+        {/* Privacy Policy Button */}
+        <TouchableOpacity style={styles.logoutBtn} onPress={()=> router.push('/settings/privacy')}>
+          <Ionicons name="shield-checkmark-outline" size={20} color={Colors.primary} />
+          <Text style={[styles.logoutText, { color: Colors.primary }]}>Privacy Policy</Text>
+        </TouchableOpacity>
+
         {/* CHange password Button */}
         <TouchableOpacity style={styles.logoutBtn} onPress={()=> router.push('./change-password')}>
           <Ionicons name="key-outline" size={20} color={Colors.error} />

@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Image, Alert, Button } from "react-native";
-import * as MediaLibrary from "expo-media-library";
+import * as Sharing from "expo-sharing";
 import Svg, { Path } from "react-native-svg";
 import { mandalaTemplates } from "@/constants/data/mandala-data";
 import { MandalaTemplate } from "@/types/MandalaTemplateType";
@@ -51,14 +51,6 @@ const SampleMandala = () => {
 
   const saveSvgToGallery = async () => {
     try {
-      const { status } = await MediaLibrary.requestPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert(
-          "Permission Required",
-          "Please grant permission to save images."
-        );
-        return;
-      }
       console.log("pressed");
       if (svgRef.current) {
         // Capture the SVG as an image
@@ -68,10 +60,17 @@ const SampleMandala = () => {
         });
         console.log(uri);
 
-        const asset = await MediaLibrary.createAssetAsync(uri);
-        await MediaLibrary.createAlbumAsync("Calm App Doodles", asset, false);
-        console.log("done saving");
-        Alert.alert("Success", "Your mandala has been saved to your gallery!");
+        // Use Sharing to avoid broad media permissions
+        const isAvailable = await Sharing.isAvailableAsync();
+        if (isAvailable) {
+          await Sharing.shareAsync(uri, {
+            mimeType: 'image/png',
+            dialogTitle: 'Save Mandala',
+            UTI: 'public.png',
+          });
+        } else {
+          Alert.alert("Error", "Sharing is not available on this device");
+        }
       }
     } catch (error) {
       console.error("Error saving SVG:", error);

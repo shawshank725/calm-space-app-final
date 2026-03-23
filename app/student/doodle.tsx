@@ -1,6 +1,6 @@
 import { ReactNativeZoomableView } from '@openspacelabs/react-native-zoomable-view';
 import Slider from '@react-native-community/slider';
-import * as MediaLibrary from 'expo-media-library';
+import * as Sharing from 'expo-sharing';
 import { useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import { Alert, Dimensions, Modal, ScrollView, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
@@ -207,13 +207,6 @@ export default function EnhancedDoodle() {
 
   const saveToGallery = async () => {
     try {
-      // Request permission to access media library
-      const { status } = await MediaLibrary.requestPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission Required', 'Please grant permission to save images to your gallery.');
-        return;
-      }
-
       if (canvasRef.current) {
         // Capture the canvas as an image
         const uri = await captureRef(canvasRef.current, {
@@ -221,11 +214,17 @@ export default function EnhancedDoodle() {
           quality: 1.0,
         });
 
-        // Save to media library
-        const asset = await MediaLibrary.createAssetAsync(uri);
-        await MediaLibrary.createAlbumAsync('Calm App Doodles', asset, false);
-
-        Alert.alert('Success!', 'Your doodle has been saved to your gallery!');
+        // Use Sharing to avoid media permissions
+        const isAvailable = await Sharing.isAvailableAsync();
+        if (isAvailable) {
+          await Sharing.shareAsync(uri, {
+            mimeType: 'image/png',
+            dialogTitle: 'Save Doodle',
+            UTI: 'public.png',
+          });
+        } else {
+          Alert.alert("Error", "Sharing is not available on this device");
+        }
       }
     } catch (error) {
       console.error('Error saving doodle:', error);

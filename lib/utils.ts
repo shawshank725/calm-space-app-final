@@ -317,41 +317,38 @@ export const formatRelativeTime = (dateString: string): string => {
 
 /**
  * Pick media (image or video) from device gallery
- * Requires expo-image-picker and expo-media-library
+ * Requires expo-image-picker
  * @returns Selected media object with uri and type, or null if cancelled
  */
 export const pickMediaFromGallery = async (): Promise<{ uri: string; type: 'image' | 'video' } | null> => {
   try {
-    // Dynamic imports to avoid import errors if packages not installed
-    const MediaLibrary = require('expo-media-library');
+    // Force use of official Photo Picker via expo-image-picker
+    // This API does NOT require broad media permissions on Android 13+
     const ImagePicker = require('expo-image-picker');
-
-    const { status: mediaStatus } = await MediaLibrary.requestPermissionsAsync();
-    const { status: imagePickerStatus } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-    if (mediaStatus !== 'granted' || imagePickerStatus !== 'granted') {
-      throw new Error('Permission needed to access media library');
-    }
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.All,
-      allowsEditing: false,
-      aspect: [4, 3],
-      quality: 0.8,
+      allowsEditing: true,
+      quality: 1,
     });
 
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      const asset = result.assets[0];
-      const type = asset.type === 'video' ? 'video' : 'image';
-      return { uri: asset.uri, type };
+    if (result.canceled) {
+      return null;
     }
 
-    return null;
+    const asset = result.assets[0];
+    const type = asset.type === 'video' ? 'video' : 'image';
+
+    return {
+      uri: asset.uri,
+      type: type as 'image' | 'video',
+    };
   } catch (error) {
-    console.error('Error picking media:', error);
-    throw error;
+    console.error('Error picking media via Photo Picker:', error);
+    return null;
   }
 };
+
 
 /**
  * Upload media file to Supabase storage

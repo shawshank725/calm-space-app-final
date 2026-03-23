@@ -6,8 +6,8 @@ import Constants from 'expo-constants';
 // const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL; 
 // const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
-const SUPABASE_URL = Constants.expoConfig?.extra?.supabaseUrl as string ?? '';
-const SUPABASE_ANON_KEY = Constants.expoConfig?.extra?.supabaseAnonKey as string ?? '';
+const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
+const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
 
 const ExpoSecureStoreAdapter = {
   getItem: (key: string) => {

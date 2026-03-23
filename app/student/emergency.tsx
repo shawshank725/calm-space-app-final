@@ -349,7 +349,7 @@ export default function Emergency() {
         onConfirm={onRationaleConfirm}
         onCancel={() => setIsRationaleVisible(false)}
         title="Location Access Required"
-        description="We use your location only to share your coordinates with responders during an active emergency request. Your location is NEVER tracked in the background."
+        description="To provide immediate help during an emergency, we need to share your precise location coordinates with authorized responders. Your location is ONLY shared when you tap 'Share My Location' and is stored securely in our database (Supabase) for safety tracking. We NEVER track your location in the background."
         iconName="pin"
         buttonText="Allow Location Access"
       />

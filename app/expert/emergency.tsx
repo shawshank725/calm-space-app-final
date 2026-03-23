@@ -5,27 +5,53 @@ import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/providers/AuthProvider';
 import { useProfile } from '@/api/Profile';
+import { usePermissions } from '@/lib/useAppPermissions';
+import { PermissionRationaleModal } from '@/components/modals/PermissionRationaleModal';
+import { useState } from 'react';
 
 export default function Emergency() {
   const router = useRouter();
   const { session } = useAuth();
   const { data: profile } = useProfile(session?.user?.id);
+  const { 
+    isRationaleVisible, 
+    setIsRationaleVisible, 
+    requestPermission, 
+    checkPermissionStatus 
+  } = usePermissions();
 
   const handleShareLocation = async () => {
     try {
-      // Check if user is authenticated
-      if (!session?.user?.id || !profile) {
-        Alert.alert('Error', 'User not authenticated. Please login again.');
-        return;
-      }
-
-      // Request location permissions
-      const { status } = await Location.requestForegroundPermissionsAsync();
+      // Check current permission status
+      const { status } = await checkPermissionStatus('location');
+      
       if (status !== 'granted') {
-        Alert.alert('Permission Denied', 'Location permission is required to share your location.');
+        // Show rationale first
+        setIsRationaleVisible(true);
         return;
       }
 
+      await executeLocationSharing();
+    } catch (error) {
+      console.error('❌ Error in handleShareLocation:', error);
+      Alert.alert('Error', 'Failed to initiate location sharing.');
+    }
+  };
+
+  const onRationaleConfirm = async () => {
+    setIsRationaleVisible(false);
+    const granted = await requestPermission('location');
+    if (granted) {
+      await executeLocationSharing();
+    }
+  };
+
+  const executeLocationSharing = async () => {
+    if (!profile) {
+      Alert.alert('Error', 'Profile data not loaded. Please try again.');
+      return;
+    }
+    try {
       // Get current location
       const location = await Location.getCurrentPositionAsync({});
       const { latitude, longitude } = location.coords;
@@ -316,6 +342,15 @@ export default function Emergency() {
         <Text style={styles.helplineNumber}>+91-6361612525</Text>
         <Text style={styles.helplineTime}>01:00 PM - 07:00 PM | Monday to Friday</Text>
       </TouchableOpacity>
+      <PermissionRationaleModal
+        isVisible={isRationaleVisible}
+        onConfirm={onRationaleConfirm}
+        onCancel={() => setIsRationaleVisible(false)}
+        title="Location Access Required"
+        description="To provide immediate help during an emergency, we need to share your precise location coordinates with authorized responders. Your location is ONLY shared when you tap 'Share My Location' and is stored securely in our database (Supabase) for safety tracking. We NEVER track your location in the background."
+        iconName="pin"
+        buttonText="Allow Location Access"
+      />
     </ScrollView>
   );
 }

@@ -4,9 +4,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
-import * as MediaLibrary from 'expo-media-library';
-import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
+import { pickMediaFromGallery } from '@/lib/utils';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '@/providers/AuthProvider';
 import { useProfile } from '@/api/Profile';
@@ -102,35 +101,13 @@ export default function BuddyConnect() {
 
   const pickMedia = async () => {
     try {
-      // Request permissions for both camera roll and media library
-      const { status: mediaStatus } = await MediaLibrary.requestPermissionsAsync();
-      const { status: imagePickerStatus } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-      if (mediaStatus !== 'granted' || imagePickerStatus !== 'granted') {
-        Alert.alert('Permission needed', 'Please grant media library permissions to select photos and videos.');
-        return;
-      }
-
-      // Launch the native image picker/gallery
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.All, // Both images and videos
-        allowsEditing: false,
-        aspect: [4, 3],
-        quality: 0.8,
-      });
-
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const asset = result.assets[0];
-        const type = asset.type === 'video' ? 'video' : 'image';
-
-        setSelectedMedia({
-          uri: asset.uri,
-          type,
-        });
+      const result = await pickMediaFromGallery();
+      if (result) {
+        setSelectedMedia(result);
       }
     } catch (error) {
       console.error('Error picking media:', error);
-      Alert.alert('Error', 'Failed to open gallery. Please try again.');
+      Alert.alert('Error', 'Failed to select media. Please try again.');
     }
   };
 

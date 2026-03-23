@@ -183,6 +183,12 @@ export default function ExpertSetting() {
             </View>
           </View>
 
+          {/* Privacy Policy Button */}
+          <TouchableOpacity style={styles.logoutBtn} onPress={()=> {router.push('/settings/privacy')}}>
+            <Ionicons name="shield-checkmark-outline" size={20} color={Colors.primary} style={{marginRight: 8}} />
+            <Text style={[styles.logoutText, {color: Colors.primary}]}>Privacy Policy</Text>
+          </TouchableOpacity>
+
           {/* Change password Button */}
           <TouchableOpacity style={styles.logoutBtn} onPress={()=> {router.push('/expert/change-password')}}>
             <Ionicons name="key-outline" size={20} color="#d84315" style={{marginRight: 8}} />

@@ -1,7 +1,6 @@
 {
   "expo": {
     "name": "Calm Space",
-    "slug": "calm-space",
     "orientation": "portrait",
     "icon": "./assets/images/logo2.png",
     "scheme": "calmspace",
@@ -32,7 +31,10 @@
         "android.permission.MODIFY_AUDIO_SETTINGS",
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.RECEIVE_BOOT_COMPLETED",
-        "android.permission.VIBRATE"
+        "android.permission.VIBRATE",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
       ],
       "blockedPermissions": [
         "android.permission.READ_MEDIA_IMAGES",
@@ -58,7 +60,7 @@
       ],
       "config": {
         "googleMaps": {
-          "apiKey": "${EXPO_PUBLIC_GOOGLE_MAPS_API_KEY}"
+          "apiKey": ""
         }
       }
     },
@@ -104,7 +106,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "88be55dd-c9ff-438f-9d01-9348d7b0dd7c"
+        "projectId": "e28706fc-5a3c-4978-a785-ba88fb11b2d7"
       }
     },
     "owner": "helpdeskcalms-organization"

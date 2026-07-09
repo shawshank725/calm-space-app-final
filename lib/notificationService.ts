@@ -1,14 +1,23 @@
-import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
-import { supabase } from './supabase';
+import type * as NotificationsTypes from 'expo-notifications';
 
 // Check if running in Expo Go
-const isExpoGo = Constants.appOwnership === 'expo';
+const isExpoGo = Constants.appOwnership === 'expo' || Constants.executionEnvironment === 'storeClient';
+
+type NotificationsModule = typeof import('expo-notifications');
+
+function getNotificationsModule(): NotificationsModule | null {
+  if (isExpoGo) {
+    return null;
+  }
+
+  return require('expo-notifications') as NotificationsModule;
+}
 
 // Configure notification behavior only if not in Expo Go
 if (!isExpoGo) {
-  Notifications.setNotificationHandler({
+  getNotificationsModule()?.setNotificationHandler({
     handleNotification: async () => ({
       shouldShowAlert: true,
       shouldPlaySound: true,
@@ -31,18 +40,19 @@ export interface PushNotificationToken {
  */
 export async function registerForPushNotificationsAsync(userId: string): Promise<string | null> {
   let token: string | null = null;
+  const Notifications = getNotificationsModule();
 
   try {
     // Skip push notifications in Expo Go since they're not supported in SDK 53+
-    if (isExpoGo) {
+    if (!Notifications) {
       console.log('ℹ️ Push notifications are not available in Expo Go. Use a development build for full functionality.');
       return null;
     }
 
     // Check permissions but don't request them here
-    const { status } = await Notifications.getPermissionsAsync();
-    
-    if (status !== 'granted') {
+    const permissionStatus = await Notifications.getPermissionsAsync() as { granted: boolean };
+
+    if (!permissionStatus.granted) {
       console.log('Push notification permission not granted. Skipping token registration.');
       return null;
     }
@@ -82,6 +92,12 @@ export async function sendLocalNotification(
   // Skip local notifications in Expo Go to avoid warnings
   if (isExpoGo) {
     console.log(`📱 Local notification (Expo Go): ${title} - ${body}`);
+    return;
+  }
+
+  const Notifications = getNotificationsModule();
+
+  if (!Notifications) {
     return;
   }
 
@@ -129,9 +145,18 @@ export async function sendNotificationToUserType(
  * Setup notification listeners
  */
 export function setupNotificationListeners(
-  onNotificationReceived?: (notification: Notifications.Notification) => void,
-  onNotificationResponse?: (response: Notifications.NotificationResponse) => void
+  onNotificationReceived?: (notification: NotificationsTypes.Notification) => void,
+  onNotificationResponse?: (response: NotificationsTypes.NotificationResponse) => void
 ) {
+  const Notifications = getNotificationsModule();
+
+  if (!Notifications) {
+    return {
+      receivedSubscription: { remove: () => {} } as NotificationsTypes.Subscription,
+      responseSubscription: { remove: () => {} } as NotificationsTypes.Subscription,
+    };
+  }
+
   // Notification received while app is foregrounded
   const receivedSubscription = Notifications.addNotificationReceivedListener(
     (notification) => {
@@ -158,8 +183,8 @@ export function setupNotificationListeners(
  * Remove notification listeners
  */
 export function removeNotificationListeners(subscriptions: {
-  receivedSubscription: Notifications.Subscription;
-  responseSubscription: Notifications.Subscription;
+  receivedSubscription: NotificationsTypes.Subscription;
+  responseSubscription: NotificationsTypes.Subscription;
 }) {
   subscriptions.receivedSubscription.remove();
   subscriptions.responseSubscription.remove();

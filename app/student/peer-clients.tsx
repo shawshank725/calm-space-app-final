@@ -176,7 +176,7 @@ export default function PeerClientsPage() {
         .from('profiles')
         .select('email, type')
         .eq('registration_number', parseInt(client.studentReg))
-        .single();
+        .maybeSingle();
 
       if (error) {
         console.error('Error fetching client details:', error);
@@ -289,7 +289,7 @@ export default function PeerClientsPage() {
                 .from('book_request')
                 .select('*')
                 .eq('id', clientId)
-                .single();
+                .maybeSingle();
 
               if (fetchError) {
                 console.error('Error fetching session details:', fetchError);
@@ -413,7 +413,7 @@ export default function PeerClientsPage() {
                 .from('book_request')
                 .select('*')
                 .eq('id', clientId)
-                .single();
+                .maybeSingle();
 
               if (fetchError) {
                 console.error('Error fetching session details:', fetchError);
@@ -474,7 +474,7 @@ export default function PeerClientsPage() {
                 .from('book_request')
                 .select('*')
                 .eq('id', clientId)
-                .single();
+                .maybeSingle();
 
               if (fetchError) {
                 console.error('Error fetching session details:', fetchError);

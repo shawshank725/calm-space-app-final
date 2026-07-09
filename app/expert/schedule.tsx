@@ -158,23 +158,19 @@ export default function ExpertSchedulePage() {
   useEffect(() => {
     if (profile && currentMonth) {
       loadAllSchedules();
-      // Automatically generate default slots for all dates in the month
       autoGenerateMonthlySlots();
 
-      // Set up real-time subscription for schedule changes
       const channel = supabase
         .channel(`expert_schedule_${profile.id}`)
         .on(
           'postgres_changes',
           {
-            event: '*', // Listen to INSERT, UPDATE, DELETE
+            event: '*',
             schema: 'public',
             table: 'expert_schedule',
             filter: `expert_id=eq.${profile.id}`,
           },
-          (payload) => {
-            console.log('Schedule changed:', payload);
-            // Reload schedules immediately
+          () => {
             loadAllSchedules();
           }
         )
@@ -185,57 +181,6 @@ export default function ExpertSchedulePage() {
       };
     }
   }, [profile, currentMonth]);
-
-  // Function to automatically remove duplicate time slots
-  const removeDuplicateSlots = async (slots: TimeSlot[]) => {
-    const seen = new Map<string, TimeSlot>();
-    const duplicatesToDelete: string[] = [];
-
-    // Group by date + start_time + end_time to find duplicates
-    slots.forEach(slot => {
-      const key = `${slot.date}_${slot.start_time}_${slot.end_time}`;
-      
-      if (seen.has(key)) {
-        // This is a duplicate, mark for deletion
-        // Keep the first one (or the one that's booked), delete the rest
-        const existing = seen.get(key)!;
-        
-        if (slot.booked_by && !existing.booked_by) {
-          // Current slot is booked but existing isn't, keep current and delete existing
-          if (existing.id) duplicatesToDelete.push(existing.id);
-          seen.set(key, slot);
-        } else if (slot.id) {
-          // Delete the current duplicate
-          duplicatesToDelete.push(slot.id);
-        }
-      } else {
-        seen.set(key, slot);
-      }
-    });
-
-    // Delete duplicates if found
-    if (duplicatesToDelete.length > 0) {
-      console.log(`🗑️ Removing ${duplicatesToDelete.length} duplicate slot(s)...`);
-      
-      try {
-        const { error } = await supabase
-          .from('expert_schedule')
-          .delete()
-          .in('id', duplicatesToDelete);
-
-        if (error) {
-          console.error('Error removing duplicates:', error);
-        } else {
-          console.log(`✅ Successfully removed ${duplicatesToDelete.length} duplicate slot(s)`);
-        }
-      } catch (error) {
-        console.error('Error removing duplicates:', error);
-      }
-    }
-
-    return duplicatesToDelete.length;
-  };
-
 
   const loadAllSchedules = async () => {
     try {
@@ -252,24 +197,8 @@ export default function ExpertSchedulePage() {
       if (error) {
         console.error('Error loading schedules:', error);
       } else if (data) {
-        // Automatically remove duplicates before processing
-        const removedCount = await removeDuplicateSlots(data);
-        
-        // Reload data if duplicates were removed
-        let finalData = data;
-        if (removedCount > 0) {
-          const { data: freshData } = await supabase
-            .from('expert_schedule')
-            .select('*')
-            .eq('expert_id', profile?.id)
-            .gte('date', formatDateToLocalString(startOfMonth))
-            .lte('date', formatDateToLocalString(endOfMonth));
-          
-          finalData = freshData || data;
-        }
-
         const scheduleMap = new Map<string, TimeSlot[]>();
-        finalData.forEach((slot: TimeSlot) => {
+        data.forEach((slot: TimeSlot) => {
           const dateKey = slot.date;
           if (!scheduleMap.has(dateKey)) {
             scheduleMap.set(dateKey, []);
@@ -297,25 +226,8 @@ export default function ExpertSchedulePage() {
       if (error) {
         console.error('Error loading slots:', error);
         setSlots([]);
-      } else if (data) {
-        // Automatically remove duplicates for this date
-        const removedCount = await removeDuplicateSlots(data);
-        
-        // Reload if duplicates were removed
-        if (removedCount > 0) {
-          const { data: freshData } = await supabase
-            .from('expert_schedule')
-            .select('*')
-            .eq('expert_id', profile?.id)
-            .eq('date', dateString)
-            .order('start_time', { ascending: true });
-          
-          setSlots(freshData || []);
-        } else {
-          setSlots(data);
-        }
       } else {
-        setSlots([]);
+        setSlots(data || []);
       }
     } catch (error) {
       console.error('Error loading slots:', error);

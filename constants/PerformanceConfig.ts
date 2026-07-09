@@ -30,7 +30,6 @@ export const PERFORMANCE_CONFIG = {
   // Modal settings for instant appearance
   MODAL: {
     ANIMATION_TYPE: 'none' as const,
-    STATUS_BAR_TRANSLUCENT: true,
     HARDWARE_ACCELERATED: true,
   },
 
@@ -67,7 +66,6 @@ export const FAST_STYLES = {
 
   fastModal: {
     animationType: PERFORMANCE_CONFIG.MODAL.ANIMATION_TYPE,
-    statusBarTranslucent: PERFORMANCE_CONFIG.MODAL.STATUS_BAR_TRANSLUCENT,
     hardwareAccelerated: PERFORMANCE_CONFIG.MODAL.HARDWARE_ACCELERATED,
   },
 

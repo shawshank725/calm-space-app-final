@@ -14,9 +14,43 @@ export default function FrontPage() {
   const [password, setPassword] = useState('');
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [isRedirecting, setIsRedirecting] = useState(false);
+  const [isProfileLoading, setIsProfileLoading] = useState(false);
   const [isForgotPasswordLoading, setIsForgotPasswordLoading] = useState(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
   const { session, loading } = useAuth();
+
+  const isCaptchaAuthError = (error: { message?: string } | null | undefined) => {
+    const message = (error?.message || '').toLowerCase();
+    return (
+      message.includes('captcha') ||
+      message.includes('bot protection') ||
+      message.includes('verification required')
+    );
+  };
+
+  const getAuthErrorDetails = (error: { message?: string } | null | undefined, fallback: string) => {
+    if (isCaptchaAuthError(error)) {
+      return {
+        title: 'Captcha protection enabled',
+        message:
+          'Supabase Auth is requiring a captcha token. This app does not provide one yet, so login and password reset will continue to fail until captcha is disabled in Supabase or a captcha flow is added.',
+      };
+    }
+
+    const message = error?.message || fallback;
+
+    if (message.toLowerCase().includes('network') || message.toLowerCase().includes('fetch')) {
+      return {
+        title: 'Network error',
+        message: 'Please check your internet connection and try again.',
+      };
+    }
+
+    return {
+      title: fallback,
+      message,
+    };
+  };
 
   const handleForgotPassword = async () => {
     console.log("hello")
@@ -35,7 +69,7 @@ export default function FrontPage() {
         .from('profiles')
         .select('email')
         .eq('registration_number', loginInput)
-        .single();
+        .maybeSingle();
       if (!data) {
         Toast.show({ type: 'error', text1: 'Registration number not found'});
         setIsForgotPasswordLoading(false);
@@ -49,11 +83,12 @@ export default function FrontPage() {
     });
 
     if (error) {
-      if (error.message.includes('network') || error.message.includes('fetch')) {
-        Toast.show({ type: 'error', text1: 'Network error', text2: 'Check your internet connection' });
-      } else {
-        Toast.show({ type: 'error', text1: error.message });
-      }
+      const authError = getAuthErrorDetails(error, 'Failed to send reset email');
+      Toast.show({
+        type: 'error',
+        text1: authError.title,
+        text2: authError.message,
+      });
     } else {
       Toast.show({ 
         type: 'success', 
@@ -74,47 +109,57 @@ export default function FrontPage() {
 
 useEffect(() => {
   const redirectUser = async () => {
-    // Wait for auth to finish loading
+    // 1. Wait for session loading
     if (loading) return;
     
-    // No session - stay on login page
+    // 2. No session? Stop and show login
     if (!session?.user?.id) {
       setIsRedirecting(false);
       return;
     }
 
-    // Only redirect once per session
-    if (isRedirecting) return;
+    // 3. Prevent multiple redirect triggers
+    if (isRedirecting || isProfileLoading) return;
 
     setIsRedirecting(true);
+    setIsProfileLoading(true);
 
     try {
-      // Fetch profile with single attempt - fast and efficient
+      // 4. Fetch profile type to determine destination
       const { data: profile, error } = await supabase
         .from('profiles')
         .select('type')
         .eq('id', session.user.id)
-        .single();
+        .maybeSingle();
 
-      if (error) {
+      if (error || !profile) {
         console.error('Profile fetch error:', error);
-        // Default to student home if profile not found
+        // Safety fallback: if session exists but profile doesn't,
+        // they might need to complete registration or we default safely.
         router.replace('/student/student-home');
         return;
       }
 
-      // Redirect based on user type
-      if (profile.type === 'STUDENT' || profile.type === 'PEER') {
-        router.replace('/student/student-home');
-      } else if (profile.type === 'EXPERT') {
-        router.replace('/expert/expert-home');
-      } else {
-        router.replace('/admin/admin-home');
+      // 5. Route based on verified type
+      switch (profile.type) {
+        case 'STUDENT':
+        case 'PEER':
+          router.replace('/student/student-home');
+          break;
+        case 'EXPERT':
+          router.replace('/expert/expert-home');
+          break;
+        case 'ADMIN':
+          router.replace('/admin/admin-home');
+          break;
+        default:
+          router.replace('/student/student-home');
       }
     } catch (err) {
-      console.error('Redirect error:', err);
-      // Fallback to student home on any error
+      console.error('Redirect exception:', err);
       router.replace('/student/student-home');
+    } finally {
+      setIsProfileLoading(false);
     }
   };
 
@@ -171,11 +216,14 @@ useEffect(() => {
       // Login with email and password
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) {
-        let errorMessage = error.message;
-        if (error.message.includes('network') || error.message.includes('fetch') || error.message.includes('Failed to fetch')) {
-          errorMessage = 'Network error. Please check your internet connection.';
-        }
-        Toast.show({ type: 'error', text1: errorMessage, position: 'top', visibilityTime: 2000 });
+        const authError = getAuthErrorDetails(error, 'Login failed');
+        Toast.show({
+          type: 'error',
+          text1: authError.title,
+          text2: authError.message,
+          position: 'top',
+          visibilityTime: 2000,
+        });
         setIsLoading(false);
         return;
       }
@@ -199,9 +247,13 @@ useEffect(() => {
     }
   }
 
-  // If checking auth or redirecting, show nothing (instant transition)
-  if (loading || isRedirecting) {
-    return null;
+  // Show loader while determining destination to prevent UI flash
+  if (loading || isRedirecting || isProfileLoading) {
+    return (
+      <View style={styles.loaderContainer}>
+        <ActivityIndicator size="large" color="#4F21A2" />
+      </View>
+    );
   }
 
   return (

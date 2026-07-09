@@ -1,7 +1,6 @@
 {
   "expo": {
     "name": "Calm Space",
-    "orientation": "portrait",
     "icon": "./assets/images/logo2.png",
     "scheme": "calmspace",
     "userInterfaceStyle": "automatic",
@@ -27,6 +26,7 @@
     "android": {
       "package": "com.calmspace.helpdeskapp",
       "privacyPolicyUrl": "https://calmspace.helpdeskapp.com/privacy-policy",
+      "enableProguardInReleaseBuilds": true,
       "permissions": [
         "android.permission.MODIFY_AUDIO_SETTINGS",
         "android.permission.POST_NOTIFICATIONS",
@@ -72,6 +72,15 @@
     "plugins": [
       "expo-router",
       [
+        "expo-build-properties",
+        {
+          "android": {
+            "proguardRules": "-include ./proguard-rules.pro",
+            "networkSecurityConfig": "./android/app/src/main/res/xml/network_security_config.xml"
+          }
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "image": "./assets/images/logo2.png",
@@ -106,7 +115,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "e28706fc-5a3c-4978-a785-ba88fb11b2d7"
+        "projectId": "346bfa06-6746-4ad2-8bd2-54bfed189daa"
       }
     },
     "owner": "helpdeskcalms-organization"

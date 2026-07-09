@@ -113,7 +113,7 @@ export default function StudentCalm() {
         .from('book_request')
         .select('*')
         .eq('id', sessionId)
-        .single();
+        .maybeSingle();
 
       if (fetchError) {
         console.error('Error fetching session details:', fetchError);
@@ -689,7 +689,7 @@ export default function StudentCalm() {
           .from('book_request')
           .insert([sessionRequestData])
           .select()
-          .single();
+          .maybeSingle();
 
     if (supabaseError) {
           console.error('Supabase error details:', supabaseError);
@@ -881,7 +881,7 @@ export default function StudentCalm() {
           .from('book_request')
           .insert([sessionRequestData])
           .select()
-          .single();
+          .maybeSingle();
 
         if (supabaseError) {
           console.error('Supabase error details:', supabaseError);

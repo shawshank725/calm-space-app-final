@@ -1,7 +1,7 @@
 // Global type declarations
 
 // React Native global
-declare var __DEV__: boolean;
+declare const __DEV__: boolean;
 
 // Common type helpers
 type AnyFunction = (...args: any[]) => any;

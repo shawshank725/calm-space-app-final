@@ -3,9 +3,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-  ActivityIndicator, Alert, Animated, Dimensions, Easing, Image, KeyboardAvoidingView, Modal, Platform,
-  SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, FlatList
+  Alert, Animated as RNAnimated, Dimensions, Easing, Image, KeyboardAvoidingView, Modal, Platform,
+  ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, FlatList
 } from 'react-native';
+import Reanimated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming, withDelay, Easing as ReanimatedEasing } from 'react-native-reanimated';
 import * as Updates from 'expo-updates';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
@@ -15,7 +16,6 @@ import Toast from 'react-native-toast-message';
 import { useInsertNotification } from '@/api/Notifications';
 import { formatRelativeTime, uploadMediaToSupabase, pickMediaFromGallery } from '@/lib/utils';
 import { profilePics } from '@/constants/ProfilePhotos';
-import * as Notifications from 'expo-notifications';
 import {
   setupNotificationListeners,
   removeNotificationListeners,
@@ -41,7 +41,6 @@ function getTodayKey() {
 
 export default function ExpertHome() {
   const router = useRouter();
-  const [expertRegNo, setExpertRegNo] = useState('');
   const [activeTab, setActiveTab] = useState<'home' | 'mood' | 'community'>('home');
 
   // Community states
@@ -106,10 +105,8 @@ export default function ExpertHome() {
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
   const [dailyMoodEntries, setDailyMoodEntries] = useState<{ [key: string]: { emoji: string, label: string, time: string, scheduled?: string, scheduleKey?: string }[] }>({});
   const [detailedMoodEntries, setDetailedMoodEntries] = useState<{ date: string, emoji: string, label: string, time: string, scheduled?: string, scheduleKey?: string, notes?: string }[]>([]);
-  const [nextMoodPrompt, setNextMoodPrompt] = useState<Date | null>(null);
   const [currentPromptInfo, setCurrentPromptInfo] = useState<{ timeLabel: string, scheduleKey: string } | null>(null);
   const [todayMoodProgress, setTodayMoodProgress] = useState<{ completed: number, total: number }>({ completed: 0, total: 6 });
-  const [moodPromptsToday, setMoodPromptsToday] = useState<number>(0);
   const [missedPromptsQueue, setMissedPromptsQueue] = useState<{ label: string, scheduleKey: string }[]>([]);
   // Track which notifications have been sent today (reset daily)
   const [sentNotificationsToday, setSentNotificationsToday] = useState<Set<string>>(new Set());
@@ -149,39 +146,67 @@ export default function ExpertHome() {
   const { height: screenHeight } = Dimensions.get('window');
   const bubbleConfigs = React.useRef(
     Array.from({ length: 14 }).map((_, i) => {
-      const size = Math.floor(Math.random() * 90) + 40; // 40 - 130
+      const size = Math.floor(Math.random() * 90) + 40;
       return {
         size,
-        left: Math.random() * 90, // percent
+        left: Math.random() * 90,
         delay: Math.random() * 4000,
-        duration: 18000 + Math.random() * 10000, // 18s - 28s
+        duration: 18000 + Math.random() * 10000,
         color: [
-          'rgba(206,147,216,0.30)', // Colors.accent base
-          'rgba(186,104,200,0.25)', // Colors.tertiary variant
-          'rgba(142,36,170,0.22)',  // secondary tint
-          'rgba(225,190,231,0.28)'  // accentLight tint
+          'rgba(206,147,216,0.30)',
+          'rgba(186,104,200,0.25)',
+          'rgba(142,36,170,0.22)',
+          'rgba(225,190,231,0.28)'
         ][i % 4],
         opacity: 0.35 + Math.random() * 0.25
       };
     })
   ).current;
-  const bubbleAnimations = React.useRef(bubbleConfigs.map(() => new Animated.Value(0))).current;
 
-  const startBubbleLoop = React.useCallback((index: number) => {
-    const cfg = bubbleConfigs[index];
-    bubbleAnimations[index].setValue(0);
-    Animated.timing(bubbleAnimations[index], {
-      toValue: 1,
-      duration: cfg.duration,
-      delay: cfg.delay,
-      easing: Easing.linear,
-      useNativeDriver: true,
-    }).start(() => startBubbleLoop(index));
-  }, [bubbleConfigs, bubbleAnimations]);
+  // Reusable Bubble component for consistency
+  const Bubble = ({ cfg }: { cfg: typeof bubbleConfigs[0] }) => {
+    const progress = useSharedValue(0);
 
-  useEffect(() => {
-    bubbleAnimations.forEach((_: any, i: number) => startBubbleLoop(i));
-  }, [bubbleAnimations, startBubbleLoop]);
+    const animatedStyle = useAnimatedStyle(() => {
+      return {
+        transform: [
+          { translateY: (1 - progress.value) * (screenHeight + cfg.size) - cfg.size },
+          { scale: 0.6 + (progress.value * 0.5) }
+        ],
+      };
+    });
+
+    useEffect(() => {
+      progress.value = withDelay(
+        cfg.delay,
+        withRepeat(
+          withTiming(1, {
+            duration: cfg.duration,
+            easing: ReanimatedEasing.linear,
+          }),
+          -1,
+          false
+        )
+      );
+    }, [cfg.delay, cfg.duration, progress]);
+
+    return (
+      <Reanimated.View
+        style={[
+          {
+            position: 'absolute',
+            left: `${cfg.left}%`,
+            width: cfg.size,
+            height: cfg.size,
+            borderRadius: cfg.size / 2,
+            backgroundColor: cfg.color,
+            opacity: cfg.opacity,
+          },
+          animatedStyle
+        ]}
+      />
+    );
+  };
 
 
   const { 
@@ -191,16 +216,8 @@ export default function ExpertHome() {
     checkPermissionStatus 
   } = usePermissions();
 
-  // Load notifications when expert data is available
-  useEffect(() => {
-    if (expertRegNo) {
-      loadNotifications();
-    }
-  }, [expertRegNo]);
-
   // Register for push notifications and setup listeners
   useEffect(() => {
-    if (!expertRegNo) return;
 
     let notificationSubscriptions: { receivedSubscription: any; responseSubscription: any } | null = null;
 
@@ -1356,7 +1373,7 @@ export default function ExpertHome() {
                 .from('profiles')
                 .select('name, type, registration_number')
                 .eq('registration_number', post.user_id)
-                .single();
+                .maybeSingle();
 
               if (userData) {
                 username = userData.name || `User ${post.user_id}`;
@@ -1467,7 +1484,7 @@ export default function ExpertHome() {
                 .from('profiles')
                 .select('username, name, type, registration_number')
                 .eq('registration_number', comment.user_id)
-                .single();
+                .maybeSingle();
 
               if (profileData) {
                 username = profileData.username || profileData.name || `User ${comment.user_id}`;
@@ -1588,31 +1605,9 @@ export default function ExpertHome() {
       <View style={{ flex: 1, backgroundColor: Colors.background, paddingHorizontal: 16, paddingTop: 60, alignItems: 'center', width: '100%' }}>
         {/* Animated Bubbles Background */}
         <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflow: 'hidden' }} pointerEvents="none">
-          {bubbleConfigs.map((cfg, i) => {
-            const translateY = bubbleAnimations[i].interpolate({
-              inputRange: [0, 1],
-              outputRange: [screenHeight + cfg.size, -cfg.size],
-            });
-            const scale = bubbleAnimations[i].interpolate({
-              inputRange: [0, 1],
-              outputRange: [0.6, 1.1],
-            });
-            return (
-              <Animated.View
-                key={i}
-                style={{
-                  position: 'absolute',
-                  left: `${cfg.left}%`,
-                  width: cfg.size,
-                  height: cfg.size,
-                  borderRadius: cfg.size / 2,
-                  backgroundColor: cfg.color,
-                  opacity: cfg.opacity,
-                  transform: [{ translateY }, { scale }],
-                }}
-              />
-            );
-          })}
+          {bubbleConfigs.map((cfg, i) => (
+            <Bubble key={i} cfg={cfg} />
+          ))}
         </View>
 
         {/* Top Right Actions - Notification Bell */}

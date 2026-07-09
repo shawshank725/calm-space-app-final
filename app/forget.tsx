@@ -117,7 +117,7 @@ export default function ChangePassword() {
             .eq('status', 'approved')
             .or(`registration_number.eq.${userInput.trim()},user_name.eq.${userInput.trim()}`)
             .eq('password', oldPassword)
-            .single();
+            .maybeSingle();
 
           console.log('User requests query result:', { data: userRequestData, error: userRequestError });
 
@@ -157,7 +157,7 @@ export default function ChangePassword() {
               .select('*')
               .eq('registration_number', userInput.trim())
               .eq('password', oldPassword)
-              .single();
+              .maybeSingle();
 
             console.log('Students query result:', { data: studentData, error: studentError });
 
@@ -198,7 +198,7 @@ export default function ChangePassword() {
               .select('*')
               .eq('registration_number', userInput.trim())
               .eq('password', oldPassword)
-              .single();
+              .maybeSingle();
 
             if (studentData && !studentError) {
               console.log('✅ STUDENT also found in students table, updating password there too...');
@@ -229,7 +229,7 @@ export default function ChangePassword() {
           .select('*')
           .eq('registration_number', userInput.trim())
           .eq('password', oldPassword)
-          .single();
+          .maybeSingle();
 
         if (expertData && !expertError) {
           console.log('✅ EXPERT found in experts table');
@@ -261,7 +261,7 @@ export default function ChangePassword() {
           .select('*')
           .eq('username', userInput.trim())
           .eq('password', oldPassword)
-          .single();
+          .maybeSingle();
 
         if (peerData && !peerError) {
           console.log('✅ PEER LISTENER found in peer_listeners table');
@@ -372,7 +372,7 @@ export default function ChangePassword() {
           .select('id, password')
           .eq('registration_number', identifier)
           .eq('password', oldPassword)
-          .single();
+          .maybeSingle();
         userData = data;
         userError = error;
 
@@ -390,7 +390,7 @@ export default function ChangePassword() {
           .select('id, password')
           .eq('registration_number', identifier)
           .eq('password', oldPassword)
-          .single();
+          .maybeSingle();
         userData = data;
         userError = error;
 
@@ -408,7 +408,7 @@ export default function ChangePassword() {
           .select('id, password')
           .eq('username', identifier)
           .eq('password', oldPassword)
-          .single();
+          .maybeSingle();
         userData = data;
         userError = error;
 

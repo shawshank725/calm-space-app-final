@@ -85,7 +85,7 @@ export default function AdminChangePassword() {
   if (isLoading) {
     return (
       <View style={{ flex: 1, backgroundColor: '#F8F9FA', justifyContent: 'center', alignItems: 'center' }}>
-        <StatusBar barStyle="light-content" backgroundColor={Colors.primary} />
+        <StatusBar barStyle="light-content" />
         <Text style={{ fontSize: 18, color: '#666' }}>Loading...</Text>
       </View>
     );
@@ -93,7 +93,7 @@ export default function AdminChangePassword() {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={Colors.primary} />
+      <StatusBar barStyle="light-content" />
 
       {/* Header */}
       <LinearGradient

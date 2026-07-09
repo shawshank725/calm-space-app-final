@@ -25,6 +25,30 @@ export default function StudentRegister() {
   const [loading, setLoading] = useState<boolean>(false);
   const [lastAttemptTime, setLastAttemptTime] = useState<number>(0);
 
+  const isCaptchaAuthError = (message?: string) => {
+    const text = (message || '').toLowerCase();
+    return (
+      text.includes('captcha') ||
+      text.includes('bot protection') ||
+      text.includes('verification required')
+    );
+  };
+
+  const getAuthErrorDetails = (message?: string, fallback = 'Registration failed') => {
+    if (isCaptchaAuthError(message)) {
+      return {
+        title: 'Captcha protection enabled',
+        message:
+          'Supabase Auth is requiring a captcha token for registration. Disable captcha protection in Supabase Auth settings or add a captcha flow to the app before trying again.',
+      };
+    }
+
+    return {
+      title: fallback,
+      message: message || fallback,
+    };
+  };
+
   // for date of birth selection
   const [selectedMonth, setSelectedMonth] = useState('');
   const [selectedDay, setSelectedDay] = useState('');
@@ -261,6 +285,13 @@ export default function StudentRegister() {
       if (authError) {
         console.error('Auth error:', authError);
 
+        if (isCaptchaAuthError(authError.message)) {
+          const authErrorDetails = getAuthErrorDetails(authError.message);
+          Alert.alert(authErrorDetails.title, authErrorDetails.message, [{ text: 'OK', style: 'default' }]);
+          setLoading(false);
+          return;
+        }
+
         // Handle rate limiting - most common error from your screenshot
         if (authError.message.toLowerCase().includes('rate limit') ||
           authError.message.toLowerCase().includes('too many requests') ||
@@ -370,6 +401,15 @@ export default function StudentRegister() {
 
       if (signInError) {
         console.error('Sign in error:', signInError);
+
+        if (isCaptchaAuthError(signInError.message)) {
+          const authErrorDetails = getAuthErrorDetails(signInError.message, 'Automatic login failed');
+          Alert.alert(authErrorDetails.title, authErrorDetails.message, [{ text: 'OK', style: 'default' }]);
+          router.replace('/');
+          setLoading(false);
+          return;
+        }
+
         Alert.alert(
           'Registration successful',
           'Account created but automatic login failed. Please log in manually.'

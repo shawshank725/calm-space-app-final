@@ -23,7 +23,7 @@ export const useGetProfileList = (user_type: string) => {
 }
 
 export const useProfile = (userId: string | null | undefined) => {
-  return useQuery<Profile>({
+  return useQuery<Profile | null>({
     queryKey: ["profile", userId],
     queryFn: async () => {
       if (!userId) return null;
@@ -32,9 +32,12 @@ export const useProfile = (userId: string | null | undefined) => {
         .from("profiles")
         .select("*")
         .eq("id", userId)
-        .single();
+        .maybeSingle(); // Safer than .single()
 
-      if (error) throw new Error(error.message);
+      if (error) {
+        console.error('Error fetching profile:', error);
+        throw new Error(error.message);
+      }
       return data;
     },
     enabled: !!userId, // only runs if userId is available

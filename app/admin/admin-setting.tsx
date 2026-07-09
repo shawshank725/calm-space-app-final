@@ -130,7 +130,7 @@ export default function AdminSetting() {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={Colors.primary} />
+      <StatusBar barStyle="light-content" />
       
       {/* Header with Gradient */}
       <LinearGradient

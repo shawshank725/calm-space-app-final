@@ -9,6 +9,7 @@ import { pickMediaFromGallery } from '@/lib/utils';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '@/providers/AuthProvider';
 import { useProfile } from '@/api/Profile';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 const profilePics = [
   require('@/assets/images/profile/pic1.png'),
@@ -28,6 +29,7 @@ const profilePics = [
 
 export default function BuddyConnect() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const params = useLocalSearchParams();
   const { session } = useAuth();
   const { data: profile } = useProfile(session?.user.id);
@@ -36,12 +38,50 @@ export default function BuddyConnect() {
   const [selectedMedia, setSelectedMedia] = useState<{ uri: string; type: 'image' | 'video' } | null>(null);
   const [isPosting, setIsPosting] = useState(false);
   const [studentRegNo, setStudentRegNo] = useState('');
-  const [posts, setPosts] = useState<any[]>([]);
-  const [loadingPosts, setLoadingPosts] = useState(true);
   const [commentsModalVisible, setCommentsModalVisible] = useState(false);
   const [selectedPostForComments, setSelectedPostForComments] = useState<any>(null);
   const [comments, setComments] = useState<any[]>([]);
   const [newComment, setNewComment] = useState('');
+
+  // 1. React Query for fetching posts
+  const { data: posts = [], isLoading: loadingPosts } = useQuery({
+    queryKey: ['community_posts'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('community_post')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      // Enrich with user data
+      const enriched = await Promise.all(
+        (data || []).map(async (post) => {
+          let username = `User ${post.user_id}`;
+          let profilePicIndex = 0;
+
+          try {
+            const { data: userData } = await supabase
+              .from('profiles')
+              .select('name, username, profile_picture_index')
+              .eq('registration_number', post.user_id)
+              .maybeSingle();
+
+            if (userData) {
+              username = userData.name || userData.username || username;
+              profilePicIndex = userData.profile_picture_index || 0;
+            }
+          } catch (e) {
+            console.log('Error enriching post:', e);
+          }
+
+          return { ...post, username, profilePicIndex };
+        })
+      );
+      return enriched;
+    },
+    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
+  });
 
   useEffect(() => {
     const loadStudentRegNo = async () => {
@@ -75,8 +115,6 @@ export default function BuddyConnect() {
   }, [params.registration, profile]);
 
   useEffect(() => {
-    fetchPosts();
-
     // Set up real-time subscription for community posts
     const channel = supabase
       .channel('community_posts_all')
@@ -87,9 +125,9 @@ export default function BuddyConnect() {
           schema: 'public',
           table: 'community_post',
         },
-        (payload) => {
-          console.log('Community post changed:', payload);
-          fetchPosts();
+        () => {
+          // Invalidate cache on change
+          queryClient.invalidateQueries({ queryKey: ['community_posts'] });
         }
       )
       .subscribe();
@@ -97,7 +135,7 @@ export default function BuddyConnect() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [queryClient]);
 
   const pickMedia = async () => {
     try {
@@ -258,8 +296,8 @@ export default function BuddyConnect() {
       setPostText('');
       setSelectedMedia(null);
 
-      // Refresh posts
-      fetchPosts();
+      // Refresh posts via invalidation
+      queryClient.invalidateQueries({ queryKey: ['community_posts'] });
 
     } catch (error) {
       console.error('Error creating post:', error);
@@ -271,90 +309,7 @@ export default function BuddyConnect() {
   };
 
   const fetchPosts = async () => {
-    try {
-      setLoadingPosts(true);
-      const { data, error } = await supabase
-        .from('community_post')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('Error fetching posts:', error);
-        if (error.message.includes('network') || error.message.includes('fetch') || error.message.includes('Failed to fetch')) {
-          Alert.alert('Network Error', 'Unable to load posts. Please check your internet connection.');
-        } else {
-          Alert.alert('Error', 'Failed to load posts');
-        }
-        return;
-      }
-
-      // Fetch user data for each post
-      const postsWithUserData = await Promise.all(
-        (data || []).map(async (post) => {
-          try {
-            let username = `User ${post.user_id}`;
-            let userType = 'student';
-
-            // Try multiple tables to get user data
-            // 1. Try user_requests table (general users)
-            const { data: userData, error: userError } = await supabase
-              .from('user_requests')
-              .select('username, name')
-              .eq('registration_number', post.user_id)
-              .single();
-
-            if (userData?.username || userData?.name) {
-              username = userData.username || userData.name;
-            } else {
-              // 2. Try student_registrations table
-              const { data: studentData } = await supabase
-                .from('student_registrations')
-                .select('name, username')
-                .eq('registration', post.user_id)
-                .single();
-
-              if (studentData?.name || studentData?.username) {
-                username = studentData.name || studentData.username;
-                userType = 'student';
-              }
-            }
-
-            // Get profile picture index from AsyncStorage
-            let profilePicIndex = 0;
-            try {
-              const storedPic = await AsyncStorage.getItem(`profilePic_${post.user_id}`);
-              if (storedPic !== null) {
-                profilePicIndex = parseInt(storedPic, 10);
-              }
-            } catch (picError) {
-              console.log('Error getting profile pic for user:', post.user_id);
-            }
-
-            return {
-              ...post,
-              username: username,
-              userType: userType,
-              profilePicIndex: profilePicIndex,
-            };
-          } catch (userError) {
-            console.log('Error fetching user data for post:', post.id, userError);
-            return {
-              ...post,
-              username: `User ${post.user_id}`,
-              userType: 'student',
-              profilePicIndex: 0,
-            };
-          }
-        })
-      );
-
-      setPosts(postsWithUserData);
-    } catch (error) {
-      console.error('Error fetching posts:', error);
-      Alert.alert('Error', 'Failed to load posts');
-    } finally {
-      setLoadingPosts(false);
-    }
+    // Replaced by useQuery
   };
 
   const fetchComments = async (postId: string) => {
@@ -396,7 +351,7 @@ export default function BuddyConnect() {
                 .from('user_requests')
                 .select('username, name')
                 .eq('registration_number', comment.user_id)
-                .single();
+                .maybeSingle();
 
               if (userData?.username || userData?.name) {
                 username = userData.username || userData.name;
@@ -406,7 +361,7 @@ export default function BuddyConnect() {
                   .from('student_registrations')
                   .select('name, username')
                   .eq('registration', comment.user_id)
-                  .single();
+                  .maybeSingle();
 
                 if (studentData?.name || studentData?.username) {
                   username = studentData.name || studentData.username;

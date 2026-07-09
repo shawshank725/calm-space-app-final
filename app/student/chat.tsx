@@ -91,7 +91,7 @@ export default function Chat() {
           .from('profiles')
           .select('id')
           .eq('registration_number', participantId)
-          .single();
+          .maybeSingle();
 
         if (error) {
           console.error('Error resolving participant ID:', error);
@@ -279,7 +279,7 @@ export default function Chat() {
         .eq('sender_id', resolvedParticipantId)
         .order('created_at', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
       if (error) {
         // no messages or error
@@ -438,7 +438,7 @@ export default function Chat() {
         .from('messages')
         .insert([messageData])
         .select()
-        .single();
+        .maybeSingle();
 
       if (error) {
         console.error('Error sending message:', error);
@@ -729,7 +729,6 @@ export default function Chat() {
         transparent={true}
         animationType="none"
         onRequestClose={handleOptionsClose}
-        statusBarTranslucent={true}
         hardwareAccelerated={true}
       >
         <TouchableOpacity
@@ -773,7 +772,6 @@ export default function Chat() {
         transparent={true}
         animationType="none"
         onRequestClose={handleChangeNameClose}
-        statusBarTranslucent={true}
         hardwareAccelerated={true}
       >
         <View style={styles.modalOverlay}>

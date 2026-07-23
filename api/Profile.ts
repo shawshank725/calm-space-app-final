@@ -57,7 +57,7 @@ export const useSaveProfileChanges = () => {
         })
         .eq("id", data.id)
         .select()
-        .single();
+        .maybeSingle();
 
       if (error) throw new Error(error.message);
       return updatedProfile;
@@ -89,7 +89,7 @@ export const useUpdateProfilePicture = () => {
         })
         .eq("id", data.id)
         .select()
-        .single();
+        .maybeSingle();
 
       if (error) throw new Error(error.message);
       return updatedProfile;

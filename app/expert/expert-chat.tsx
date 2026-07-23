@@ -153,7 +153,7 @@ export default function ExpertChatPage() {
                 .from('messages')
                 .insert([messageData])
                 .select()
-                .single();
+        .maybeSingle();
 
             // Add to local state for immediate UI update
             if (data) {

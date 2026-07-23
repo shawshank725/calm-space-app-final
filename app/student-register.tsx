@@ -376,7 +376,7 @@ export default function StudentRegister() {
         .from("profiles")
         .insert(profileData)
         .select()
-        .single();
+        .maybeSingle();
 
       if (insertError) {
         console.error('Profile insert error:', insertError);

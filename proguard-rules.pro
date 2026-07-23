@@ -33,6 +33,7 @@
 
 # --- Optimization ---
 # Strip debugging information from the native code
+-dontwarn android.util.Log
 -assumenosideeffects class android.util.Log {
     public static *** d(...);
     public static *** v(...);

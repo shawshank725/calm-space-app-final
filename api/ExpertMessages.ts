@@ -38,7 +38,7 @@ export const useInsertMessage = () => {
           },
         ])
         .select()
-        .single();
+        .maybeSingle();
 
       if (error) throw new Error(error.message);
       return data as ChatMessage;

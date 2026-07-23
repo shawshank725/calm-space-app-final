@@ -30,7 +30,7 @@ export const useInsertNotification = () => {
         .from("notifications")
         .insert([newNotification])
         .select()
-        .single();
+        .maybeSingle();
 
       if (error) throw new Error(error.message);
       return data as Notification;

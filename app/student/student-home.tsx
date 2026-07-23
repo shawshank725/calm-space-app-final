@@ -169,94 +169,94 @@ export default function StudentHome() {
   };
 
   // Initialize mood calendar data immediately on mount - Database first approach
-  useEffect(() => {
-    const initializeMoodData = async () => {
-      try {
-        // Use session user ID to load mood data from database
-        const userId = session?.user?.id;
-        if (!userId) {
-          console.log('⏳ Waiting for user session to initialize mood data from database...');
-          return;
-        }
+  const initializeMoodData = useCallback(async () => {
+    try {
+      // Use session user ID to load mood data from database
+      const userId = session?.user?.id;
+      if (!userId) {
+        console.log('⏳ Waiting for user session to initialize mood data from database...');
+        return;
+      }
 
-        console.log('🎯 Initializing mood calendar from database for user:', userId);
-        
-        // Load mood data directly from Supabase (primary source)
-        const { data: moodData, error } = await supabase
-          .from('mood_entries')
-          .select('*')
-          .eq('user_id', userId)
-          .order('entry_date', { ascending: true });
+      console.log('🎯 Initializing mood calendar from database for user:', userId);
 
-        if (error) {
-          console.error('❌ Error loading mood data from database during initialization:', error);
-          // Set empty state if database fails
-          setMoodHistory({});
-          setDailyMoodEntries({});
-          setDetailedMoodEntries([]);
-          return;
-        }
+      // Load mood data directly from Supabase (primary source)
+      const { data: moodData, error } = await supabase
+        .from('mood_entries')
+        .select('*')
+        .eq('user_id', userId)
+        .order('entry_date', { ascending: true });
 
-        if (moodData && moodData.length > 0) {
-          // Transform database data to local format
-          const history: { [key: string]: string } = {};
-          const dailyEntries: { [key: string]: any[] } = {};
-          const detailed: any[] = [];
+      if (error) {
+        console.error('❌ Error loading mood data from database during initialization:', error);
+        // Set empty state if database fails
+        setMoodHistory({});
+        setDailyMoodEntries({});
+        setDetailedMoodEntries([]);
+        return;
+      }
 
-          moodData.forEach((entry: any) => {
-            // Ensure date is in YYYY-MM-DD format
-            const date = entry.entry_date;
-            if (!date) {
-              console.warn('⚠️ Mood entry missing date:', entry);
-              return;
-            }
-            
-            // Use the last mood emoji for the day (for calendar display)
-            history[date] = entry.mood_emoji;
-            
-            if (!dailyEntries[date]) dailyEntries[date] = [];
-            dailyEntries[date].push({
-              emoji: entry.mood_emoji,
-              label: entry.mood_label,
-              time: entry.entry_time,
-              scheduled: entry.scheduled_label,
-              scheduleKey: entry.schedule_key
-            });
+      if (moodData && moodData.length > 0) {
+        // Transform database data to local format
+        const history: { [key: string]: string } = {};
+        const dailyEntries: { [key: string]: any[] } = {};
+        const detailed: any[] = [];
 
-            detailed.push({
-              date: entry.entry_date,
-              emoji: entry.mood_emoji,
-              label: entry.mood_label,
-              time: entry.entry_time,
-              scheduled: entry.scheduled_label,
-              scheduleKey: entry.schedule_key,
-              notes: entry.notes
-            });
+        moodData.forEach((entry: any) => {
+          // Ensure date is in YYYY-MM-DD format
+          const date = entry.entry_date;
+          if (!date) {
+            console.warn('⚠️ Mood entry missing date:', entry);
+            return;
+          }
+
+          // Use the last mood emoji for the day (for calendar display)
+          history[date] = entry.mood_emoji;
+
+          if (!dailyEntries[date]) dailyEntries[date] = [];
+          dailyEntries[date].push({
+            emoji: entry.mood_emoji,
+            label: entry.mood_label,
+            time: entry.entry_time,
+            scheduled: entry.scheduled_label,
+            scheduleKey: entry.schedule_key
           });
 
-          setMoodHistory(history);
-          setDailyMoodEntries(dailyEntries);
-          setDetailedMoodEntries(detailed);
-          console.log(`✅ Mood calendar initialized from database with ${moodData.length} entries`);
-        } else {
-          console.log('📝 No mood data found in database - starting fresh');
-          setMoodHistory({});
-          setDailyMoodEntries({});
-          setDetailedMoodEntries([]);
-        }
-      } catch (error) {
-        console.error('❌ Error initializing mood data from database:', error);
+          detailed.push({
+            date: entry.entry_date,
+            emoji: entry.mood_emoji,
+            label: entry.mood_label,
+            time: entry.entry_time,
+            scheduled: entry.scheduled_label,
+            scheduleKey: entry.schedule_key,
+            notes: entry.notes
+          });
+        });
+
+        setMoodHistory(history);
+        setDailyMoodEntries(dailyEntries);
+        setDetailedMoodEntries(detailed);
+        console.log(`✅ Mood calendar initialized from database with ${moodData.length} entries`);
+      } else {
+        console.log('📝 No mood data found in database - starting fresh');
         setMoodHistory({});
         setDailyMoodEntries({});
         setDetailedMoodEntries([]);
       }
-    };
+    } catch (error) {
+      console.error('❌ Error initializing mood data from database:', error);
+      setMoodHistory({});
+      setDailyMoodEntries({});
+      setDetailedMoodEntries([]);
+    }
+  }, [session?.user?.id]);
 
+  useEffect(() => {
     // Run initialization when session is available
     if (session?.user?.id) {
       initializeMoodData();
     }
-  }, [session?.user?.id]); // Removed initializeMoodData from deps as it's defined inside
+  }, [session?.user?.id, initializeMoodData]);
 
   // Student info state
   const [studentName, setStudentName] = useState('');
@@ -591,6 +591,54 @@ export default function StudentHome() {
     }
   }, [session?.user?.id, checkForMoodPrompt]);
 
+  // Notification functions
+  const loadNotifications = useCallback(async () => {
+    try {
+      // Load notifications where student is the recipient or recipient_type is 'student' or 'all'
+      const { data: notificationsData, error } = await supabase
+        .from('notifications')
+        .select('*')
+        .or(`receiver_type.eq.STUDENTS,receiver_type.eq.ALL`)
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      if (error) {
+        console.error('Error loading notifications:', error);
+        if (error.message?.includes('network') || error.message?.includes('fetch') || error.message?.includes('Failed to fetch')) {
+          console.log('Network error while loading notifications');
+        }
+        return;
+      }
+
+      if (notificationsData) {
+        setNotifications(notificationsData);
+        const unread = notificationsData.filter((n: any) => !n.is_read).length;
+        setUnreadCount(unread);
+      }
+    } catch (error) {
+      console.error('Error in loadNotifications:', error);
+    }
+  }, []);
+
+  const markNotificationAsRead = useCallback(async (notificationId: string) => {
+    try {
+      const { error } = await supabase
+        .from('notifications')
+        .update({ is_read: true })
+        .eq('id', notificationId);
+
+      if (error) throw error;
+
+      // Update local state
+      setNotifications(prev =>
+        prev.map(n => n.id === notificationId ? { ...n, is_read: true } : n)
+      );
+      setUnreadCount(prev => Math.max(0, prev - 1));
+    } catch (error) {
+      console.error('Error marking notification as read:', error);
+    }
+  }, []);
+
   // Load student data from AsyncStorage or params
   useEffect(() => {
     const loadStudentSession = async () => {
@@ -673,7 +721,7 @@ export default function StudentHome() {
     };
 
     loadStudentSession();
-  }, [studentRegNo, initializeMoodPromptSystem, checkForMoodPrompt, checkPermissionStatus, loadAppUsageStats]);
+  }, [studentRegNo, initializeMoodPromptSystem, checkForMoodPrompt, checkPermissionStatus, loadAppUsageStats, loadNotifications]);
 
   // Load mood history from AsyncStorage - use useFocusEffect for APK compatibility
   useFocusEffect(
@@ -933,34 +981,6 @@ export default function StudentHome() {
     }
   }, [activeTab, session?.user?.id]);
 
-  // Notification functions
-  const loadNotifications = async () => {
-    try {
-      // Load notifications where student is the recipient or recipient_type is 'student' or 'all'
-      const { data: notificationsData, error } = await supabase
-        .from('notifications')
-        .select('*')
-        .or(`receiver_type.eq.STUDENTS,receiver_type.eq.ALL`)
-        .order('created_at', { ascending: false })
-        .limit(50);
-
-      if (error) {
-        console.error('Error loading notifications:', error);
-        if (error.message?.includes('network') || error.message?.includes('fetch') || error.message?.includes('Failed to fetch')) {
-          console.log('Network error while loading notifications');
-        }
-        return;
-      }
-
-      if (notificationsData) {
-        setNotifications(notificationsData);
-        const unread = notificationsData.filter((n: NotificationData) => !n.is_read).length;
-        setUnreadCount(unread);
-      }
-    } catch (error) {
-      console.error('Error loading notifications:', error);
-    }
-  };
 
   // Load notifications on component mount and when focused
   useEffect(() => {
@@ -2151,7 +2171,7 @@ export default function StudentHome() {
                           {new Date(notification.created_at).toLocaleDateString()} {new Date(notification.created_at).toLocaleTimeString()}
                         </Text>
                       </View>
-                      {/* <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
                         {!notification.is_read && (
                           <TouchableOpacity
                             style={{ backgroundColor: Colors.primary, borderRadius: 15, padding: 8 }}
@@ -2160,7 +2180,7 @@ export default function StudentHome() {
                             <Ionicons name="checkmark" size={16} color={Colors.white} />
                           </TouchableOpacity>
                         )}
-                      </View> */}
+                      </View>
                     </View>
                     {notification.priority === 'HIGH' && (
                       <View style={{ backgroundColor: '#ff4444', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10, alignSelf: 'flex-start', marginTop: 8 }}>

@@ -7,5 +7,6 @@ export type Notification = {
   title: string;
   message: string;
   priority: 'LOW' | 'MEDIUM' | 'HIGH';
+  is_read: boolean;
   created_at: string;
 };

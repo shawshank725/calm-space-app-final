@@ -339,7 +339,7 @@ export default function BuddyConnect() {
               .from('profiles')
               .select('name, username, type, registration_number')
               .eq('registration_number', comment.user_id)
-              .single();
+              .maybeSingle();
 
             if (profileData) {
               username = profileData.name || profileData.username || username;

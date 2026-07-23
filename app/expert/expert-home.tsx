@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
   Alert, Animated as RNAnimated, Dimensions, Easing, Image, KeyboardAvoidingView, Modal, Platform,
-  ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, FlatList
+  ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, FlatList, SafeAreaView, ActivityIndicator
 } from 'react-native';
 import Reanimated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming, withDelay, Easing as ReanimatedEasing } from 'react-native-reanimated';
 import * as Updates from 'expo-updates';
@@ -108,12 +108,14 @@ export default function ExpertHome() {
   const [currentPromptInfo, setCurrentPromptInfo] = useState<{ timeLabel: string, scheduleKey: string } | null>(null);
   const [todayMoodProgress, setTodayMoodProgress] = useState<{ completed: number, total: number }>({ completed: 0, total: 6 });
   const [missedPromptsQueue, setMissedPromptsQueue] = useState<{ label: string, scheduleKey: string }[]>([]);
+  const [moodPromptsToday, setMoodPromptsToday] = useState(0);
+  const [nextMoodPrompt, setNextMoodPrompt] = useState<Date | null>(null);
   // Track which notifications have been sent today (reset daily)
   const [sentNotificationsToday, setSentNotificationsToday] = useState<Set<string>>(new Set());
   const [lastNotificationDate, setLastNotificationDate] = useState<string>('');
 
-  // this is the expert registration number but studentReg no is used to not break things
-  const studentRegNo = profile?.registration_number;
+  // this is the expert registration number
+  const expertRegNo = profile?.registration_number?.toString() || '';
 
   const [showToolkitPage, setShowToolkitPage] = useState(false);
   const [showToolkitPopup, setShowToolkitPopup] = useState(false);
@@ -289,6 +291,7 @@ export default function ExpertHome() {
       const { data, error } = await supabase
         .from('notifications')
         .select('*')
+        .or(`receiver_type.eq.EXPERTS,receiver_type.eq.ALL`)
         .order('created_at', { ascending: false })
         .limit(50);
 
@@ -331,6 +334,7 @@ export default function ExpertHome() {
         title: notificationForm.title,
         message: notificationForm.message,
         priority: notificationForm.priority.toUpperCase() as 'LOW' | 'MEDIUM' | 'HIGH',
+        is_read: false,
         created_at: new Date().toISOString(),
       }
       console.log(notificationData);
@@ -817,6 +821,17 @@ export default function ExpertHome() {
         setDailyMoodEntries(dailyEntries);
         setDetailedMoodEntries(detailedList);
         console.log('✅ Expert mood calendar data refreshed:', Object.keys(history).length, 'days');
+
+        // Set next prompt date if applicable
+        const currentHour = now.getHours();
+        const futureSlots = timeSlots.filter(s => s.start > currentHour);
+        if (futureSlots.length > 0) {
+          const next = new Date();
+          next.setHours(futureSlots[0].start, 0, 0, 0);
+          setNextMoodPrompt(next);
+        } else {
+          setNextMoodPrompt(null);
+        }
       }
 
       if (missedSlots.length > 0) {
@@ -1096,13 +1111,14 @@ export default function ExpertHome() {
 
   // Check for mood prompts every 30 minutes
   useEffect(() => {
-    if (expertRegNo && session?.user?.id) {
+    if (session?.user?.id) {
       const interval = setInterval(async () => {
-        await checkForMoodPrompt(expertRegNo);
+        const regNo = profile?.registration_number?.toString() || '';
+        if (regNo) await checkForMoodPrompt(regNo);
       }, 30 * 60 * 1000);
       return () => clearInterval(interval);
     }
-  }, [expertRegNo, session?.user?.id]);
+  }, [profile?.registration_number, session?.user?.id]);
 
 
   // Mood Calendar Component
@@ -2527,7 +2543,7 @@ export default function ExpertHome() {
                     setSelectedToolkitItem({
                       name: 'Grounding Exercises',
                       description: 'Grounding exercises help you stay present and connected to the current moment. These techniques can reduce anxiety and help you feel more centered.',
-                      route: `/expert/toolkit/toolkit-grounding?registration=${studentRegNo}`
+                      route: `/expert/toolkit/toolkit-grounding?registration=${expertRegNo}`
                     });
                     setShowToolkitPopup(true);
                   }}
@@ -2541,7 +2557,7 @@ export default function ExpertHome() {
                     setSelectedToolkitItem({
                       name: 'Breathing Exercises',
                       description: 'Breathing exercises help calm your mind and body. Practice deep, mindful breathing to reduce stress and improve focus.',
-                      route: `/expert/toolkit/toolkit-breathing?registration=${studentRegNo}`
+                      route: `/expert/toolkit/toolkit-breathing?registration=${expertRegNo}`
                     });
                     setShowToolkitPopup(true);
                   }}
@@ -2557,7 +2573,7 @@ export default function ExpertHome() {
                     setSelectedToolkitItem({
                       name: 'Color Mandala',
                       description: 'Coloring mandalas is a meditative practice that helps reduce stress and promotes mindfulness through creative expression.',
-                      route: `/expert/toolkit/mandala-editor?registration=${studentRegNo}`
+                      route: `/expert/toolkit/mandala-editor?registration=${expertRegNo}`
                     });
                     setShowToolkitPopup(true);
                   }}
@@ -2571,7 +2587,7 @@ export default function ExpertHome() {
                     setSelectedToolkitItem({
                       name: 'Movement Exercise',
                       description: 'Movement exercises combine physical activity with mindfulness to help release tension and improve your mental well-being.',
-                      route: `/expert/toolkit/toolkit-movement?registration=${studentRegNo}`
+                      route: `/expert/toolkit/toolkit-movement?registration=${expertRegNo}`
                     });
                     setShowToolkitPopup(true);
                   }}
@@ -2587,7 +2603,7 @@ export default function ExpertHome() {
                     setSelectedToolkitItem({
                       name: 'Focus & Concentration',
                       description: 'Focus exercises help improve your concentration and mental clarity. Practice techniques to enhance attention and productivity.',
-                      route: `/expert/toolkit/toolkit-focus?registration=${studentRegNo}`
+                      route: `/expert/toolkit/toolkit-focus?registration=${expertRegNo}`
                     });
                     setShowToolkitPopup(true);
                   }}

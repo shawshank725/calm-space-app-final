@@ -287,7 +287,7 @@ export default function AdminHome() {
               .from('user_requests')
               .select('username, name')
               .eq('registration_number', post.user_id)
-              .single();
+              .maybeSingle();
 
             if (userData) {
               username = userData.name || userData.username || `User ${post.user_id}`;
@@ -450,7 +450,7 @@ export default function AdminHome() {
               .from('profiles')
               .select('name, username, type, registration_number')
               .eq('registration_number', comment.user_id)
-              .single();
+              .maybeSingle();
 
             if (userData) {
               username = userData.username || userData.name || `User ${comment.user_id}`;

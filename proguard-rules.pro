@@ -12,18 +12,7 @@
 # Skia also relies heavily on JNI bindings.
 -keep class com.shopify.reactnative.skia.** { *; }
 
-# --- Supabase / OkHttp / Retrofit (Networking) ---
-# Prevents obfuscating the models used for JSON serialization
--keepattributes RuntimeVisibleAnnotations, RuntimeVisibleParameterAnnotations
--dontwarn com.google.gson.**
--keep class com.google.gson.** { *; }
--keep class com.google.gson.reflect.TypeToken { *; }
--keepclassmembers class * {
-    @com.google.gson.annotations.SerializedName <fields>;
-}
-
-# --- Supabase / PostgREST / Realtime ---
--keep class com.supabase.** { *; }
+# --- Networking / OkHttp ---
 -dontwarn okio.**
 -dontwarn javax.annotation.**
 -dontwarn org.conscrypt.**

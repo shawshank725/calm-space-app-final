@@ -66,7 +66,7 @@ export default function ConsultationPage() {
                     filter: `receiver_id=eq.${profile.id}`,
                 },
                 (payload: any) => {
-                    console.log('New message received:', payload);
+                    console.log('New message received');
                     const newMessage = payload.new as ChatMessage;
                     setMessages(prev => {
                         const exists = prev.some(msg => msg.id === newMessage.id);
@@ -97,7 +97,7 @@ export default function ConsultationPage() {
                     filter: `receiver_id=eq.${profile.id}`,
                 },
                 (payload: any) => {
-                    console.log('Message updated:', payload);
+                    console.log('Message updated');
                     const updatedMessage = payload.new as ChatMessage;
                     setMessages(prev => {
                         const updated = prev.map(msg => 

@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import type * as NotificationsTypes from 'expo-notifications';
+import { logger } from './logger';
 
 // Check if running in Expo Go
 const isExpoGo = Constants.appOwnership === 'expo' || Constants.executionEnvironment === 'storeClient';
@@ -45,7 +46,7 @@ export async function registerForPushNotificationsAsync(userId: string): Promise
   try {
     // Skip push notifications in Expo Go since they're not supported in SDK 53+
     if (!Notifications) {
-      console.log('ℹ️ Push notifications are not available in Expo Go. Use a development build for full functionality.');
+      logger.info('Push notifications are not available in Expo Go. Use a development build for full functionality.');
       return null;
     }
 
@@ -53,16 +54,43 @@ export async function registerForPushNotificationsAsync(userId: string): Promise
     const permissionStatus = await Notifications.getPermissionsAsync() as { granted: boolean };
 
     if (!permissionStatus.granted) {
-      console.log('Push notification permission not granted. Skipping token registration.');
+      logger.info('Push notification permission not granted. Skipping token registration.');
       return null;
     }
 
-    // Get push token
+    // Get push token from Expo config
+    const projectId =
+      Constants.expoConfig?.extra?.eas?.projectId ??
+      Constants.easConfig?.projectId;
+
+    if (!projectId) {
+      logger.error('No Expo Project ID found in configuration. Push notifications will not work.');
+      return null;
+    }
+
     const pushToken = await Notifications.getExpoPushTokenAsync({
-      projectId: '766744c8-deca-4ae4-b33e-04085a5d31b2', // Updated
+      projectId,
     });
     token = pushToken.data;
-    console.log('📱 Push token obtained:', token.substring(0, 20) + '...');
+
+    logger.info('Push token obtained successfully');
+
+    // Save token to Supabase
+    const { supabase } = require('./supabase');
+    const { error: dbError } = await supabase
+      .from('push_tokens')
+      .upsert({
+        user_id: userId,
+        push_token: token,
+        platform: Platform.OS,
+        created_at: new Date().toISOString(),
+      });
+
+    if (dbError) {
+      logger.error('Failed to save push token to database', dbError);
+    } else {
+      logger.info('Push token persisted to database');
+    }
 
     // Configure notification channel for Android
     if (Platform.OS === 'android') {
@@ -75,7 +103,7 @@ export async function registerForPushNotificationsAsync(userId: string): Promise
     }
 
   } catch (error) {
-    console.error('Error registering for push notifications:', error);
+    logger.error('Error registering for push notifications', error);
   }
 
   return token;
@@ -91,7 +119,7 @@ export async function sendLocalNotification(
 ) {
   // Skip local notifications in Expo Go to avoid warnings
   if (isExpoGo) {
-    console.log(`📱 Local notification (Expo Go): ${title} - ${body}`);
+    logger.debug(`Local notification (Expo Go): ${title} - ${body}`);
     return;
   }
 
@@ -113,8 +141,7 @@ export async function sendLocalNotification(
 }
 
 /**
- * Send push notification to specific users
- * Note: Push tokens table removed - this function is disabled
+ * Send push notification to specific users via secure Edge Function
  */
 export async function sendPushNotificationToUsers(
   userIds: string[],
@@ -122,23 +149,56 @@ export async function sendPushNotificationToUsers(
   body: string,
   data?: any
 ) {
-  console.log('Push notifications disabled - push_tokens table removed');
-  return;
+  try {
+    const { supabase } = require('./supabase');
+
+    // Secure approach: Call Edge Function instead of client-side fetch
+    const { data: resData, error: funcError } = await supabase.functions.invoke('send-push', {
+      body: {
+        userIds,
+        title,
+        body,
+        data: data || {},
+      }
+    });
+
+    if (funcError) {
+      logger.error('Edge Function push failed', funcError);
+      // Fallback or handle error
+    } else {
+      logger.info('Push notification request sent through Edge Function');
+    }
+
+  } catch (error) {
+    logger.error('Error sending push notification via function', error);
+  }
 }
 
 /**
  * Send notification to all users of a specific type
- * Note: Push tokens table removed - this function is disabled
  */
 export async function sendNotificationToUserType(
-  userType: 'student' | 'expert' | 'admin' | 'all',
+  userType: 'STUDENT' | 'EXPERT' | 'PEER' | 'ADMIN' | 'ALL',
   title: string,
   body: string,
   data?: any
 ) {
-  console.log('Push notifications disabled - push_tokens table removed');
-  return;
+  try {
+    const { supabase } = require('./supabase');
 
+    let query = supabase.from('profiles').select('id');
+    if (userType !== 'ALL') {
+      query = query.eq('type', userType);
+    }
+
+    const { data: users, error: userError } = await query;
+    if (userError || !users) return;
+
+    const userIds = users.map((u: any) => u.id);
+    await sendPushNotificationToUsers(userIds, title, body, data);
+  } catch (error) {
+    logger.error('Error sending notification to user type', error);
+  }
 }
 
 /**
@@ -160,7 +220,7 @@ export function setupNotificationListeners(
   // Notification received while app is foregrounded
   const receivedSubscription = Notifications.addNotificationReceivedListener(
     (notification) => {
-      console.log('📬 Notification received:', notification);
+      logger.debug('Notification received', notification);
       onNotificationReceived?.(notification);
     }
   );
@@ -168,7 +228,7 @@ export function setupNotificationListeners(
   // User tapped on notification
   const responseSubscription = Notifications.addNotificationResponseReceivedListener(
     (response) => {
-      console.log('👆 Notification tapped:', response);
+      logger.debug('Notification tapped', response);
       onNotificationResponse?.(response);
     }
   );

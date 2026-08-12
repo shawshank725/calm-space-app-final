@@ -381,19 +381,13 @@ export const uploadMediaToSupabase = async (
       throw new Error('File does not exist at the provided URI');
     }
 
-    const base64 = await FileSystem.readAsStringAsync(uri, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-
-    const binaryString = atob(base64);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
+    // Efficiently get blob from local URI without Base64 overhead
+    const response = await fetch(uri);
+    const blob = await response.blob();
 
     const { data, error } = await supabase.storage
       .from(bucket)
-      .upload(filePath, bytes, {
+      .upload(filePath, blob, {
         contentType: type === 'image' ? 'image/jpeg' : 'video/mp4',
         upsert: false,
       });

@@ -89,8 +89,6 @@ export default function Emergency() {
         status: 'active'
       };
 
-      console.log('📍 Sharing location:', locationData);
-
       const { data, error } = await supabase
         .from('student_locations')
         .insert([locationData])

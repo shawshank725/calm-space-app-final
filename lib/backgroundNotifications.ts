@@ -3,9 +3,8 @@
  * Call this from message insertion to notify receivers even when app is closed
  */
 
-import { supabase } from './supabase';
-
-const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
+import { logger } from './logger';
+import { sendPushNotificationToUsers } from './notificationService';
 
 interface PushNotificationData {
   receiverId: string;
@@ -16,17 +15,18 @@ interface PushNotificationData {
 
 /**
  * Send push notification to a user (works even when app is closed)
- * This calls Expo's push service directly
  */
 export async function sendPushNotificationToUser({
   receiverId,
   title,
   body,
   data = {},
-}: PushNotificationData): Promise<boolean> {
-  console.log('Push notifications disabled - push_tokens table removed');
-  // Just send local notification instead
-  return false;
+}: PushNotificationData): Promise<void> {
+  try {
+    await sendPushNotificationToUsers([receiverId], title, body, data);
+  } catch (error) {
+    logger.error('Background notification failed', error);
+  }
 }
 
 /**

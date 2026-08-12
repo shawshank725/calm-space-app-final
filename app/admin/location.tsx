@@ -72,14 +72,14 @@ export default function AdminLocation() {
       .on('postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'student_locations' },
         async (payload) => {
-          console.log('New location shared:', payload.new);
+          console.log('New location shared');
           setStudentLocations(prev => [payload.new as StudentLocation, ...prev]);
         }
       )
       .on('postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'student_locations' },
         async (payload) => {
-          console.log('Location updated:', payload.new);
+          console.log('Location updated');
           setStudentLocations(prev =>
             prev.map(loc =>
               loc.id === payload.new.id ? payload.new as StudentLocation : loc

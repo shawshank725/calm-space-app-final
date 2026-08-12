@@ -6,9 +6,10 @@ import Svg, { Path } from 'react-native-svg';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
 import { FACULTY } from '@/constants/courses';
-import { getAllUsernames, getAllRegistrationNumbers } from "@/api/Profile";
+import { checkUsernameExists, checkRegistrationNumberExists } from "@/api/Profile";
 import Toast from 'react-native-toast-message';
 import { Picker } from '@react-native-picker/picker';
+import { logger } from '@/lib/logger';
 
 export default function StudentRegister() {
   const router = useRouter();
@@ -113,10 +114,6 @@ export default function StudentRegister() {
     const passwordRegex = /^[a-zA-Z0-9!@#$%^&*()_+{}\[\]:;<>,.?~\\/-]{8,}$/;
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-    // Fetch existing usernames and registration numbers
-    const allUsernames = await getAllUsernames();
-    const allRegistrationNumbers = await getAllRegistrationNumbers();
-
     if (!name || !username || !registrationNumber || !course || !phone || !dob || !email || !password) {
       Alert.alert("Missing Fields", "All fields are required.");
       return false;
@@ -134,19 +131,9 @@ export default function StudentRegister() {
       return false;
     }
 
-    if (!email.includes('@') || !email.split('@')[1].includes('.')) {
-      Alert.alert("Invalid Email Domain", "Email must include a valid domain (e.g., @gmail.com, @sgtuniversity.org).");
-      return false;
-    }
-
     // Validate username - no spaces, lowercase
     if (username.includes(' ')) {
       Alert.alert("Invalid Username", "Username cannot contain spaces.");
-      return false;
-    }
-
-    if (username !== username.toLowerCase()) {
-      Alert.alert("Invalid Username", "Username must be all lowercase.");
       return false;
     }
 
@@ -166,12 +153,12 @@ export default function StudentRegister() {
       return false;
     }
 
-    if (allUsernames.includes(username)) {
+    if (await checkUsernameExists(username)) {
       Alert.alert("Username taken", "Username is already taken. Try another one.");
       return false;
     }
 
-    if (allRegistrationNumbers.includes(registrationNumber)) {
+    if (await checkRegistrationNumberExists(registrationNumber)) {
       Alert.alert("Registration Number taken", "Registration number is already taken.");
       return false;
     }
@@ -267,7 +254,8 @@ export default function StudentRegister() {
     setLastAttemptTime(now);
 
     try {
-      // Step 1: Sign up the user with rate limit bypass options
+      // Step 1: Sign up the user with all profile data in metadata
+      // This works with the DB trigger to create an atomic profile.
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
@@ -275,15 +263,18 @@ export default function StudentRegister() {
           data: {
             username: username,
             name: name,
+            registration_number: registrationNumber,
+            phone_number: phone,
+            course: 'FACULTY_OF_' + course.replace(/\s+/g, '_').toUpperCase(),
+            date_of_birth: dob,
+            type: "STUDENT",
           },
-          emailRedirectTo: undefined,
-          // Bypass email confirmation in development to reduce rate limit issues
-          // Note: This requires Supabase email confirmation to be disabled in settings
         }
       });
 
       if (authError) {
-        console.error('Auth error:', authError);
+        logger.error('Registration auth failure', authError);
+        // ... (rest of error handling remains same)
 
         if (isCaptchaAuthError(authError.message)) {
           const authErrorDetails = getAuthErrorDetails(authError.message);
@@ -355,52 +346,19 @@ export default function StudentRegister() {
         return;
       }
 
-      console.log('User created successfully:', authData.user.id);
+      logger.info('User created and profile triggered successfully', { userId: authData.user.id });
 
-      // Step 3: Insert profile data
-      const profileData = {
-        id: authData.user.id,
-        username: username,
-        registration_number: registrationNumber,
-        name: name,
-        course: 'FACULTY_OF_' + course.replace(/\s+/g, '_').toUpperCase(),
-        phone_number: phone,
-        email: email,
-        date_of_birth: dob,
-        type: "STUDENT",
-      };
+      // Wait a moment to ensure profile trigger is fully committed to database
+      await new Promise(resolve => setTimeout(resolve, 200));
 
-      console.log('Inserting profile data:', profileData);
-
-      const { data: profileInsertData, error: insertError } = await supabase
-        .from("profiles")
-        .insert(profileData)
-        .select()
-        .maybeSingle();
-
-      if (insertError) {
-        console.error('Profile insert error:', insertError);
-        Alert.alert(
-          'Profile creation failed',
-          'Account created but profile setup failed. Please contact support.'
-        );
-        setLoading(false);
-        return;
-      }
-
-      console.log('Profile created successfully');
-
-      // Wait a moment to ensure profile is fully committed to database
-      await new Promise(resolve => setTimeout(resolve, 150)); // Reduced to 150ms
-
-      // Step 4: Sign in the user
+      // Step 2: Sign in the user
       const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password
       });
 
       if (signInError) {
-        console.error('Sign in error:', signInError);
+        logger.error('Automatic sign-in after registration failed', signInError);
 
         if (isCaptchaAuthError(signInError.message)) {
           const authErrorDetails = getAuthErrorDetails(signInError.message, 'Automatic login failed');
@@ -433,7 +391,7 @@ export default function StudentRegister() {
       setLoading(false);
 
     } catch (err: any) {
-      console.error('Registration error:', err);
+      logger.error('Registration logic exception', err);
 
       // Handle network errors
       if (err.message?.includes('fetch') || err.message?.includes('network')) {

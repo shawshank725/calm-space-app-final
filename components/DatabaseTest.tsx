@@ -133,10 +133,10 @@ export default function DatabaseTest() {
         return;
       }
 
-      console.log('📋 Recent rows:', data);
+      console.log('📋 Recent rows loaded:', data?.length);
       Alert.alert(
         'Recent Rows',
-        `Found ${data?.length || 0} rows\nCheck console for details`,
+        `Found ${data?.length || 0} rows`,
         [{ text: 'OK' }]
       );
     } catch (err) {

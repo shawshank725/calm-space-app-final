@@ -8,6 +8,7 @@ import { Colors } from '@/constants/Colors';
 import { useAuth } from '@/providers/AuthProvider';
 import { useProfile, useUpdateProfilePicture, useDeleteAccount } from '@/api/Profile';
 import { handleLogout } from '@/api/OtherMethods';
+import { logger } from '@/lib/logger';
 
 const profilePics = [
   require('@/assets/images/profile/pic1.png'),
@@ -76,10 +77,10 @@ export default function StudentSetting() {
           profilePictureIndex: index,
         });
         
-        console.log("✅ Profile picture saved to both AsyncStorage and Supabase");
+        logger.info("Profile picture saved to both AsyncStorage and Supabase");
       }
     } catch (error) {
-      console.error('❌ Error saving profile pic:', error);
+      logger.error('Error saving profile pic', error);
       Alert.alert('Error', 'Failed to save profile picture');
     }
   };
@@ -114,7 +115,7 @@ export default function StudentSetting() {
                 await deleteAccount.mutateAsync(session.user.id);
               }
             } catch (error) {
-              console.error('❌ Error during data wipe:', error);
+              logger.error('Error during data wipe', error);
             }
           }
         }

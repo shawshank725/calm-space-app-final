@@ -83,7 +83,7 @@ export default function Emergency() {
         status: 'active'
       };
 
-      console.log('📍 Sharing location:', locationData);
+      console.log('📍 Sharing location');
 
       const { data, error } = await supabase
         .from('student_locations')
@@ -100,7 +100,7 @@ export default function Emergency() {
             [
               { text: 'Copy Error Details', onPress: () => {
                 // In a real app, you could copy to clipboard here
-                console.log('RLS Error Details:', error);
+                console.log('RLS Error occurred');
               }},
               { text: 'OK', style: 'default' }
             ]
@@ -117,7 +117,7 @@ export default function Emergency() {
         return;
       }
 
-      console.log('✅ Location shared successfully:', data);
+      console.log('✅ Location shared successfully');
       Alert.alert(
         '✅ Location Shared Successfully!',
         `Your emergency location has been shared with the admin.\n\n` +

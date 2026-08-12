@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { LearningResource } from "@/types/LearningResource";
 import { Alert, Linking } from "react-native";
+import { logger } from "@/lib/logger";
 
 
 interface PreviewHandlers {
@@ -20,13 +21,12 @@ export const useLibraryResources = () => {
 
       if (error) {
         if (error.code === "42P01") {
-          console.log("Library table not found:", error);
-          return []; // Return empty array if table doesn't exist
+          logger.info("Library table not found (Expected if schema is restricted)");
+          return [];
         }
         throw new Error(`Failed to load library resources: ${error.message}`);
       }
 
-      // Map library data to LearningResource format
       const mappedResources: LearningResource[] = (libraryData || []).map(item => ({
         id: item.id || String(Math.random()),
         resource_title: item.resource_title || item.title || item.name || "Untitled Resource",
@@ -36,11 +36,10 @@ export const useLibraryResources = () => {
         category: item.category || "REMEMBER BETTER",
       }));
 
-      console.log(`Loaded ${mappedResources.length} resources from library table`);
+      logger.debug(`Loaded ${mappedResources.length} resources from library`);
       return mappedResources;
     },
-    // Optionally, you can set staleTime or cacheTime to reduce refetching
-    staleTime: 1000 * 60 * 5, // 5 minutes
+    staleTime: 1000 * 60 * 5,
   });
 };
 
@@ -57,10 +56,8 @@ export const downloadResource = async (
           text: "Open",
           onPress: async () => {
             try {
-              // Get the file URL from Supabase storage
               let fileUrl = resource.file_url;
 
-              // If it's a storage path, get the public URL
               if (!fileUrl.startsWith("http")) {
                 const { data } = supabase.storage
                   .from("library_pdfs")
@@ -69,7 +66,6 @@ export const downloadResource = async (
                 fileUrl = data.publicUrl;
               }
 
-              // Open the file URL in browser/viewer
               const supported = await Linking.canOpenURL(fileUrl);
               if (supported) {
                 await Linking.openURL(fileUrl);
@@ -77,7 +73,7 @@ export const downloadResource = async (
                 Alert.alert("Error", "Unable to open this file type.");
               }
             } catch (err) {
-              console.error("Open error:", err);
+              logger.error("Failed to open resource URL", err);
               Alert.alert("Error", "Failed to open the file. Please try again.");
             }
           },
@@ -85,7 +81,7 @@ export const downloadResource = async (
       ]
     );
   } catch (error) {
-    console.error("Download error:", error);
+    logger.error("Download resource error", error);
     Alert.alert("Error", "Failed to open resource");
   }
 };
@@ -99,7 +95,6 @@ export const previewResource = async (
   try {
     let fileUrl = resource.file_url;
 
-    // If it's a storage path, get the public URL
     if (!fileUrl.startsWith("http")) {
       const { data } = supabase.storage
         .from("library_pdfs")
@@ -108,25 +103,21 @@ export const previewResource = async (
       fileUrl = data.publicUrl;
     }
 
-    // PDFs → open externally
     if (resource.file_type === "application/pdf") {
       await Linking.openURL(fileUrl);
     }
-    // Images → show in modal
     else if (resource.file_type.startsWith("image/")) {
       setSelectedResource({ ...resource, file_url: fileUrl });
       setShowPreviewModal(true);
     }
-    // Videos → open externally
     else if (resource.file_type.startsWith("video/")) {
       await Linking.openURL(fileUrl);
     }
-    // Other types → attempt to open
     else {
       await Linking.openURL(fileUrl);
     }
   } catch (error) {
-    console.error("Preview error:", error);
+    logger.error("Resource preview failed", error);
     Alert.alert(
       "Preview Error",
       "Unable to preview this file. You can try downloading it instead."

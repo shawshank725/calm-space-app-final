@@ -601,18 +601,6 @@ export default function MessagesPage() {
     }
   };
 
-  const debugRefresh = async () => {
-    try {
-      Alert.alert('Debug Refresh', 'Refreshing conversations and messages...', [{ text: 'OK' }]);
-
-      await refreshData();
-
-      console.log('Debug refresh completed for messages page');
-    } catch (error) {
-      console.error('Debug refresh error:', error);
-      Alert.alert('Error', 'Failed to refresh messages');
-    }
-  };
 
   const renderReceivedMessage = ({ item }: { item: ReceivedMessage }) => {
     const isSelected = selectedMessages.includes(item.id);
@@ -716,12 +704,7 @@ export default function MessagesPage() {
           <Text style={styles.headerTitle}>My Conversations</Text>
           <Text style={styles.headerSubtitle}>Private chats with {profile?.name}</Text>
         </View>
-        <TouchableOpacity
-          onPress={debugRefresh}
-          style={styles.debugRefreshButton}
-        >
-          <Text style={styles.debugRefreshIcon}>🔄</Text>
-        </TouchableOpacity>
+        <View style={styles.headerSpacer} />
       </View>
 
       {/* Search Box */}

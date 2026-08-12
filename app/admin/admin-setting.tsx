@@ -56,7 +56,7 @@ export default function AdminSetting() {
           table: 'help',
         },
         (payload) => {
-          console.log('Help message changed:', payload);
+          console.log('Help message changed');
           fetchHelpMessages();
         }
       )

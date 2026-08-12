@@ -355,7 +355,7 @@ export default function Chat() {
           filter: `or(and(sender_id.eq.${resolvedParticipantId},receiver_id.eq.${profile.id}),and(sender_id.eq.${profile.id},receiver_id.eq.${resolvedParticipantId}))`,
         },
         (payload) => {
-          console.log('New message received in chat:', payload);
+          console.log('New message received');
           const newMessage = payload.new as ChatMessage;
           setChatMessages(prev => {
             const exists = prev.some(msg => msg.id === newMessage.id);
@@ -427,11 +427,8 @@ export default function Chat() {
       created_at: new Date(),
     };
 
-    console.log('Sending message with data:', { 
-      sender_id: messageData.sender_id, 
-      receiver_id: messageData.receiver_id,
-      message: messageData.message 
-    });
+    // Log sanitized for production
+    console.log('Sending message to participant');
 
     try {
       const { data, error } = await supabase

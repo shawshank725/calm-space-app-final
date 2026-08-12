@@ -6,6 +6,7 @@ import { Modal, Text, TextInput, TouchableOpacity, View, StyleSheet, ActivityInd
 import { supabase } from '@/lib/supabase';
 import Toast from 'react-native-toast-message';
 import { useAuth } from '@/providers/AuthProvider';
+import { logger } from '@/lib/logger';
 
 export default function FrontPage() {
   const router = useRouter();
@@ -31,15 +32,29 @@ export default function FrontPage() {
   const getAuthErrorDetails = (error: { message?: string } | null | undefined, fallback: string) => {
     if (isCaptchaAuthError(error)) {
       return {
-        title: 'Captcha protection enabled',
+        title: 'Security check required',
         message:
-          'Supabase Auth is requiring a captcha token. This app does not provide one yet, so login and password reset will continue to fail until captcha is disabled in Supabase or a captcha flow is added.',
+          'Supabase Auth is requiring a captcha token. Please contact support or try again later.',
       };
     }
 
     const message = error?.message || fallback;
 
-    if (message.toLowerCase().includes('network') || message.toLowerCase().includes('fetch')) {
+    // Sanitize error messages for production to prevent user enumeration
+    const lowerMessage = message.toLowerCase();
+    if (
+      lowerMessage.includes('invalid login credentials') ||
+      lowerMessage.includes('email not confirmed') ||
+      lowerMessage.includes('user not found') ||
+      lowerMessage.includes('registration number not found')
+    ) {
+      return {
+        title: 'Authentication failed',
+        message: 'Unable to sign in. Please check your credentials and try again.',
+      };
+    }
+
+    if (lowerMessage.includes('network') || lowerMessage.includes('fetch')) {
       return {
         title: 'Network error',
         message: 'Please check your internet connection and try again.',
@@ -47,13 +62,12 @@ export default function FrontPage() {
     }
 
     return {
-      title: fallback,
-      message,
+      title: 'Authentication failed',
+      message: 'An unexpected error occurred. Please try again.',
     };
   };
 
   const handleForgotPassword = async () => {
-    console.log("hello")
   if (!loginInput.trim()) {
     Toast.show({ type: 'error', text1: 'Enter your email or registration number first' });
     return;
@@ -71,7 +85,12 @@ export default function FrontPage() {
         .eq('registration_number', loginInput)
         .maybeSingle();
       if (!data) {
-        Toast.show({ type: 'error', text1: 'Registration number not found'});
+        logger.info('Reset password attempt with non-existent registration number');
+        Toast.show({
+          type: 'error',
+          text1: 'Authentication failed',
+          text2: 'Unable to process request. Please check your credentials.'
+        });
         setIsForgotPasswordLoading(false);
         return;
       }
@@ -133,7 +152,7 @@ useEffect(() => {
         .maybeSingle();
 
       if (error || !profile) {
-        console.error('Profile fetch error:', error);
+        logger.error('Profile fetch error during redirect', error);
         // Safety fallback: if session exists but profile doesn't,
         // they might need to complete registration or we default safely.
         router.replace('/student/student-home');
@@ -156,7 +175,7 @@ useEffect(() => {
           router.replace('/student/student-home');
       }
     } catch (err) {
-      console.error('Redirect exception:', err);
+      logger.error('Redirect exception', err);
       router.replace('/student/student-home');
     } finally {
       setIsProfileLoading(false);
@@ -186,11 +205,11 @@ useEffect(() => {
           .maybeSingle();
         
         if (profileError) {
-          console.error('Profile lookup error:', profileError);
+          logger.error('Profile lookup error during login', profileError);
           Toast.show({ 
             type: 'error', 
-            text1: 'Login error', 
-            text2: 'Please check your credentials',
+            text1: 'Authentication failed',
+            text2: 'Unable to sign in. Please check your credentials.',
             position: 'top', 
             visibilityTime: 2000 
           });
@@ -199,10 +218,11 @@ useEffect(() => {
         }
         
         if (!profileData) {
-          Toast.show({ 
+          logger.info('Login attempt with non-existent registration number');
+          Toast.show({
             type: 'error', 
-            text1: 'Registration number not found', 
-            text2: 'Please check your registration number',
+            text1: 'Authentication failed',
+            text2: 'Unable to sign in. Please check your credentials.',
             position: 'top', 
             visibilityTime: 2000 
           });

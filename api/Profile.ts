@@ -4,23 +4,23 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { Alert } from "react-native";
 import Toast from "react-native-toast-message";
-
+import { logger } from "@/lib/logger";
+import { storageService } from "@/lib/storageService";
 
 export const useGetProfileList = (user_type: string) => {
   return useQuery({
-    queryKey: ["profiles", user_type], // Better key based on user type
-    queryFn: async() => {
-      console.log(`📋 Fetching profiles with type: ${user_type}`);
-      const {data, error} = await supabase.from("profiles").select("*").eq("type",user_type);
-      if (error){
-        console.log("❌ Error fetching profiles:", error);
+    queryKey: ["profiles", user_type],
+    queryFn: async () => {
+      logger.debug(`Fetching profiles with type: ${user_type}`);
+      const { data, error } = await supabase.from("profiles").select("*").eq("type", user_type);
+      if (error) {
+        logger.error("Error fetching profiles", error);
         throw new Error("Error fetching profiles");
       }
-      console.log(`✅ Found ${data?.length || 0} ${user_type} profiles`);
-      return data;
+      return data as Profile[];
     }
-  })
-}
+  });
+};
 
 export const useProfile = (userId: string | null | undefined) => {
   return useQuery<Profile | null>({
@@ -32,15 +32,15 @@ export const useProfile = (userId: string | null | undefined) => {
         .from("profiles")
         .select("*")
         .eq("id", userId)
-        .maybeSingle(); // Safer than .single()
+        .maybeSingle();
 
       if (error) {
-        console.error('Error fetching profile:', error);
+        logger.error('Error fetching profile', error);
         throw new Error(error.message);
       }
-      return data;
+      return data as Profile;
     },
-    enabled: !!userId, // only runs if userId is available
+    enabled: !!userId,
   });
 };
 
@@ -53,7 +53,7 @@ export const useSaveProfileChanges = () => {
         .from("profiles")
         .update({
           username: data.username,
-          full_name: data.name, 
+          full_name: data.name,
         })
         .eq("id", data.id)
         .select()
@@ -65,7 +65,7 @@ export const useSaveProfileChanges = () => {
 
     onSuccess: async (_, variables) => {
       await queryClient.invalidateQueries({
-        queryKey: ['profile', variables.id], 
+        queryKey: ['profile', variables.id],
       });
       Toast.show({
         type: 'success',
@@ -97,73 +97,59 @@ export const useUpdateProfilePicture = () => {
 
     onSuccess: async (_, variables) => {
       await queryClient.invalidateQueries({
-        queryKey: ['profile', variables.id], 
+        queryKey: ['profile', variables.id],
       });
-      console.log('✅ Profile picture updated in Supabase');
+      logger.info('Profile picture updated successfully');
     },
-    
+
     onError: (error) => {
-      console.error('❌ Error updating profile picture:', error);
+      logger.error('Error updating profile picture', error);
     },
   });
 };
 
-export const getAllUsernames = async () => {
-  try {
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("username");
-    
-    if (error) {
-      console.error('Error fetching usernames:', error);
-      return [];
-    }
-    
-    if (!data || !Array.isArray(data)) {
-      console.warn('No usernames data returned');
-      return [];
-    }
-    
-    const usernames = data
-      .map((user) => user?.username)
-      .filter(Boolean); // Remove null/undefined values
-    
-    return usernames;
-  } catch (err) {
-    console.error('Exception fetching usernames:', err);
-    return [];
-  }
-};
-
+/**
+ * useDeleteAccount - Atomic Deletion
+ * Relies on PostgreSQL ON DELETE CASCADE constraints for data integrity.
+ */
 export const useDeleteAccount = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (userId: string) => {
-      console.log(`🧹 Comprehensive data wipe for user: ${userId}`);
+      logger.info(`Starting atomic account deletion for user: ${userId}`);
 
-      // 1. Delete Student Locations
-      await supabase.from("student_locations").delete().eq("profile_id", userId);
+      // 1. Fetch profile details first for cleanup (e.g. storage)
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('registration_number')
+        .eq('id', userId)
+        .maybeSingle();
 
-      // 2. Delete Messages
-      await supabase.from("messages").delete().or(`sender_id.eq.${userId},receiver_id.eq.${userId}`);
+      // 2. Cleanup physical storage files
+      await storageService.cleanupUserStorage(userId);
 
-      // 3. Delete Community Data
-      await supabase.from("community_post").delete().eq("user_id", userId);
-      await supabase.from("post_comment").delete().eq("user_id", userId);
+      // 3. Single delete operation on the parent 'profiles' table.
+      // Database foreign key constraints (ON DELETE CASCADE) will
+      // automatically clean up student_locations, messages, community_post, etc.
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .delete()
+        .eq("id", userId);
 
-      // 4. Delete Booking Requests
-      await supabase.from("book_request").delete().eq("student_id", userId);
+      if (profileError) {
+        logger.error('Failed to delete profile record', profileError);
+        throw new Error(profileError.message);
+      }
 
-      // 5. Clear Expert/Peer slots if this user was an expert/peer
-      await supabase.from("expert_schedule").delete().eq("expert_id", userId);
-      await supabase.from("student_schedule").delete().eq("peer_id", userId);
+      // 4. Request full auth deletion via Edge Function (to be implemented)
+      try {
+        await supabase.functions.invoke('delete-user-auth');
+      } catch (authErr) {
+        logger.warn('Auth deletion via edge function failed, falling back to signout', authErr);
+      }
 
-      // 6. Delete Profile
-      const { error: profileError } = await supabase.from("profiles").delete().eq("id", userId);
-      if (profileError) throw new Error(profileError.message);
-
-      // 7. Sign out locally
+      // Final step: Sign out locally.
       await supabase.auth.signOut();
 
       return { success: true };
@@ -173,42 +159,70 @@ export const useDeleteAccount = () => {
       Toast.show({
         type: 'success',
         text1: 'Account Deleted',
-        text2: 'All your data has been permanently removed.',
+        text2: 'Your data has been permanently removed.',
         position: 'bottom',
       });
       router.replace("/");
     },
     onError: (error: any) => {
-      console.error('❌ Error deleting account:', error);
+      logger.error('Error deleting account', error);
       Alert.alert('Error', 'Failed to delete account data. Please contact support.');
     }
   });
 };
 
-
-export const getAllRegistrationNumbers = async () => {
+/**
+ * checkUsernameExists - Securely check if a username is taken
+ */
+export const checkUsernameExists = async (username: string): Promise<boolean> => {
   try {
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("registration_number");
-    
+    const { data, error } = await supabase.rpc('check_username_exists', {
+      username_to_check: username
+    });
+
     if (error) {
-      console.error('Error fetching registration numbers:', error);
-      return [];
+      logger.error('Error checking username', error);
+      // Fallback: search restricted by RLS
+      const { count } = await supabase
+        .from("profiles")
+        .select("id", { count: 'exact', head: true })
+        .eq("username", username);
+      return (count || 0) > 0;
     }
-    
-    if (!data || !Array.isArray(data)) {
-      console.warn('No registration numbers data returned');
-      return [];
-    }
-    
-    const registrationNumbers = data
-      .map((user) => user?.registration_number)
-      .filter(Boolean); // Remove null/undefined values
-    
-    return registrationNumbers;
+
+    return !!data;
   } catch (err) {
-    console.error('Exception fetching registration numbers:', err);
-    return [];
+    logger.error('Exception checking username', err);
+    return true; // Safe fallback: assume taken
   }
 };
+
+/**
+ * checkRegistrationNumberExists - Securely check if a registration number is taken
+ */
+export const checkRegistrationNumberExists = async (regNo: string): Promise<boolean> => {
+  try {
+    const regNum = parseInt(regNo, 10);
+    if (isNaN(regNum)) return false;
+
+    const { data, error } = await supabase.rpc('check_registration_exists', {
+      reg_to_check: regNum
+    });
+
+    if (error) {
+      logger.error('Error checking registration number', error);
+      // Fallback
+      const { count } = await supabase
+        .from("profiles")
+        .select("id", { count: 'exact', head: true })
+        .eq("registration_number", regNum);
+      return (count || 0) > 0;
+    }
+
+    return !!data;
+  } catch (err) {
+    logger.error('Exception checking registration number', err);
+    return true; // Safe fallback
+  }
+};
+

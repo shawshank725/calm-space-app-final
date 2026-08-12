@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { ExpertPeerSlot } from "@/types/ExpertPeerSlot";
+import { logger } from "@/lib/logger";
 
 export const useGetExpertPeerSlots = (expertPeerId: string | undefined, date: string, type: "EXPERT" | "PEER" | undefined) => {
   return useQuery<ExpertPeerSlot[], Error>({
@@ -15,7 +16,7 @@ export const useGetExpertPeerSlots = (expertPeerId: string | undefined, date: st
         .order("start_time", { ascending: true });
 
       if (error) {
-        console.error("Error loading slots:", error);
+        logger.error("Error loading schedule slots", error);
         throw new Error(error.message);
       }
       return data || [];

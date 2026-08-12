@@ -1,4 +1,4 @@
-import { useAudioPlayer } from 'expo-audio';
+import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import * as DocumentPicker from 'expo-document-picker';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
@@ -114,6 +114,7 @@ function BreathPacerWithAudio() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [showList, setShowList] = useState(false);
   const player = useAudioPlayer();
+  const status = useAudioPlayerStatus(player);
   const audioLoadingRef = React.useRef(false);
 
   const pickAudio = async () => {
@@ -165,29 +166,11 @@ function BreathPacerWithAudio() {
   };
 
   React.useEffect(() => {
-    const subscription = player.addListener('playbackStatusUpdate', (status) => {
-      if (!status.isLoaded) {
-        return;
-      }
-
-      if (status.didJustFinish) {
-        setIsPlaying(false);
-        setCurrentTrack(null);
-      }
-    });
-
-    return () => {
-      // Clean up resources
-      subscription?.remove();
-      if (isPlaying) {
-        try {
-          player.pause();
-        } catch (e) {
-          console.warn('Error pausing on unmount:', e);
-        }
-      }
-    };
-  }, [player, isPlaying]);
+    if (status.didJustFinish) {
+      setIsPlaying(false);
+      setCurrentTrack(null);
+    }
+  }, [status.didJustFinish]);
 
   return (
     <View style={{ alignItems: 'center', marginVertical: 20 }}>

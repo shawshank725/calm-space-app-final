@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase";
 import { Session } from "@supabase/supabase-js";
 import { createContext, PropsWithChildren, useContext, useEffect, useState } from "react";
+import { registerForPushNotificationsAsync } from "@/lib/notificationService";
 
 type AuthData = {
     session: Session | null;
@@ -33,6 +34,10 @@ export default function AuthProvider({children}: PropsWithChildren) {
             setSession(session);
             if (_event === 'INITIAL_SESSION' || _event === 'SIGNED_IN') {
                 setLoading(false);
+                if (session?.user?.id) {
+                    // Automatically register for push notifications on login
+                    registerForPushNotificationsAsync(session.user.id);
+                }
             }
         });
 

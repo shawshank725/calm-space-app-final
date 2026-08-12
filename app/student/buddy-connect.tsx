@@ -39,46 +39,41 @@ export default function BuddyConnect() {
   const [isPosting, setIsPosting] = useState(false);
   const [studentRegNo, setStudentRegNo] = useState('');
   const [commentsModalVisible, setCommentsModalVisible] = useState(false);
-  const [selectedPostForComments, setSelectedPostForComments] = useState<any>(null);
-  const [comments, setComments] = useState<any[]>([]);
+import { CommunityPost, PostComment } from '@/types/Community';
+
+// ... inside BuddyConnect component
+  const [selectedPostForComments, setSelectedPostForComments] = useState<CommunityPost | null>(null);
+  const [comments, setComments] = useState<PostComment[]>([]);
   const [newComment, setNewComment] = useState('');
 
-  // 1. React Query for fetching posts
+  // 1. React Query for fetching posts - Optimized with single enrichment query
   const { data: posts = [], isLoading: loadingPosts } = useQuery({
     queryKey: ['community_posts'],
     queryFn: async () => {
+      // Use the SECURE VIEW to avoid N+1 and PII leakage
       const { data, error } = await supabase
-        .from('community_post')
+        .from('community_feed')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        // Fallback to table if view doesn't exist yet (migration not applied)
+        const { data: postsData, error: postsError } = await supabase
+          .from('community_post')
+          .select('*, profiles(name, username, profile_picture_index)')
+          .order('created_at', { ascending: false });
 
-      // Enrich with user data
-      const enriched = await Promise.all(
-        (data || []).map(async (post) => {
-          let username = `User ${post.user_id}`;
-          let profilePicIndex = 0;
+        if (postsError) throw postsError;
 
-          try {
-            const { data: userData } = await supabase
-              .from('profiles')
-              .select('name, username, profile_picture_index')
-              .eq('registration_number', post.user_id)
-              .maybeSingle();
+        return (postsData || []).map(post => ({
+          ...post,
+          author_name: post.profiles?.name || post.profiles?.username || 'User',
+          author_profile_pic: post.profiles?.profile_picture_index || 0,
+          author_id: post.profile_id || post.user_id // fallback
+        }));
+      }
 
-            if (userData) {
-              username = userData.name || userData.username || username;
-              profilePicIndex = userData.profile_picture_index || 0;
-            }
-          } catch (e) {
-            console.log('Error enriching post:', e);
-          }
-
-          return { ...post, username, profilePicIndex };
-        })
-      );
-      return enriched;
+      return data || [];
     },
     staleTime: 1000 * 60 * 5, // Cache for 5 minutes
   });
@@ -153,7 +148,7 @@ export default function BuddyConnect() {
 
   const uploadMediaToSupabase = async (uri: string, type: 'image' | 'video') => {
     try {
-      console.log('Starting media upload for URI:', uri, 'Type:', type);
+      console.log('Starting media upload');
 
       // Validate URI
       if (!uri || !uri.startsWith('file://')) {
@@ -161,7 +156,8 @@ export default function BuddyConnect() {
       }
 
       const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${type === 'image' ? 'jpg' : 'mp4'}`;
-      const filePath = `community/${fileName}`;
+      // Use user-specific path for security
+      const filePath = `community/${session?.user?.id}/${fileName}`;
 
       console.log('Generated file path:', filePath);
 
@@ -171,28 +167,16 @@ export default function BuddyConnect() {
         throw new Error('File does not exist at the provided URI');
       }
 
-      console.log('File exists, size:', fileInfo.size);
+      console.log('File check passed');
 
-      // Read file as base64
-      const base64 = await FileSystem.readAsStringAsync(uri, {
-        encoding: 'base64' as any,
-      });
-
-      console.log('File read as base64, length:', base64.length);
-
-      // Convert base64 to Uint8Array
-      const binaryString = atob(base64);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-
-      console.log('Converted to bytes, length:', bytes.length);
+      // Efficiently get blob from local URI without Base64 overhead
+      const response = await fetch(uri);
+      const blob = await response.blob();
 
       // Upload to Supabase storage
       const { data, error } = await supabase.storage
         .from('media')
-        .upload(filePath, bytes, {
+        .upload(filePath, blob, {
           contentType: type === 'image' ? 'image/jpeg' : 'video/mp4',
           upsert: false,
         });
@@ -202,7 +186,7 @@ export default function BuddyConnect() {
         throw new Error(`Supabase upload failed: ${error.message}`);
       }
 
-      console.log('Upload successful, data:', data);
+      console.log('Upload successful');
 
       // Get public URL
       const { data: urlData } = supabase.storage
@@ -213,7 +197,7 @@ export default function BuddyConnect() {
         throw new Error('Failed to get public URL for uploaded media');
       }
 
-      console.log('Public URL generated:', urlData.publicUrl);
+      console.log('Public URL generated');
       return urlData.publicUrl;
     } catch (error) {
       console.error('Error uploading media:', error);
@@ -246,7 +230,7 @@ export default function BuddyConnect() {
         setStudentRegNo(String(profile.registration_number));
       }
 
-      console.log('User ID:', userId);
+      console.log('User ID resolved');
 
       if (!userId) {
         Alert.alert('Error', 'Unable to identify user. Please log in again.');
@@ -257,10 +241,10 @@ export default function BuddyConnect() {
 
       // Upload media if selected
       if (selectedMedia) {
-        console.log('Uploading media...', selectedMedia);
+        console.log('Uploading media...');
         try {
           mediaUrl = await uploadMediaToSupabase(selectedMedia.uri, selectedMedia.type);
-          console.log('Media uploaded successfully:', mediaUrl);
+          console.log('Media uploaded successfully');
         } catch (mediaError) {
           console.error('Media upload failed:', mediaError);
           Alert.alert('Error', `Failed to upload media: ${mediaError instanceof Error ? mediaError.message : 'Unknown error'}`);
@@ -274,7 +258,8 @@ export default function BuddyConnect() {
         .from('community_post')
         .insert([
           {
-            user_id: userId,
+            profile_id: session.user.id,
+            user_id: userId, // Keep for backward compatibility until dropped
             content: postText.trim(),
             media_url: mediaUrl,
             media_type: selectedMedia?.type || null,
@@ -288,7 +273,7 @@ export default function BuddyConnect() {
         throw error;
       }
 
-      console.log('Post created successfully:', data);
+      console.log('Post created successfully');
 
       // Success
       Alert.alert('Success', 'Post created successfully!');
@@ -314,94 +299,38 @@ export default function BuddyConnect() {
 
   const fetchComments = async (postId: string) => {
     try {
-      const { data, error } = await supabase
-        .from('post_comment')
+      // Use the SECURE VIEW for comments
+      const { data: commentsData, error } = await supabase
+        .from('community_comments')
         .select('*')
         .eq('post_id', postId)
         .order('created_at', { ascending: true });
 
       if (error) {
-        console.error('Error fetching comments:', error);
+        // Fallback
+        const { data: fbData, error: fbError } = await supabase
+          .from('post_comment')
+          .select('*, profiles(name, username, profile_picture_index, type)')
+          .eq('post_id', postId)
+          .order('created_at', { ascending: true });
+
+        if (fbError) throw fbError;
+
+        setComments((fbData || []).map(c => ({
+          ...c,
+          author_name: c.profiles?.name || c.profiles?.username || 'User',
+          author_profile_pic: c.profiles?.profile_picture_index || 0,
+          author_type: c.profiles?.type || 'STUDENT',
+          isExpert: c.profiles?.type === 'EXPERT',
+          author_id: c.profile_id || c.user_id
+        })));
         return;
       }
 
-      // Fetch user data for each comment
-      const commentsWithUserData = await Promise.all(
-        (data || []).map(async (comment) => {
-          try {
-            let username = `User ${comment.user_id}`;
-            let userType = 'student';
-            let isExpert = false;
-
-            // Try multiple tables to get user data
-            // 1. Try profiles table (for all user types including experts)
-            const { data: profileData } = await supabase
-              .from('profiles')
-              .select('name, username, type, registration_number')
-              .eq('registration_number', comment.user_id)
-              .maybeSingle();
-
-            if (profileData) {
-              username = profileData.name || profileData.username || username;
-              userType = profileData.type?.toLowerCase() || 'student';
-              isExpert = profileData.type === 'EXPERT';
-            } else {
-              // 2. Try user_requests table (general users)
-              const { data: userData } = await supabase
-                .from('user_requests')
-                .select('username, name')
-                .eq('registration_number', comment.user_id)
-                .maybeSingle();
-
-              if (userData?.username || userData?.name) {
-                username = userData.username || userData.name;
-              } else {
-                // 3. Try student_registrations table
-                const { data: studentData } = await supabase
-                  .from('student_registrations')
-                  .select('name, username')
-                  .eq('registration', comment.user_id)
-                  .maybeSingle();
-
-                if (studentData?.name || studentData?.username) {
-                  username = studentData.name || studentData.username;
-                  userType = 'student';
-                }
-              }
-            }
-
-            // Get profile picture index from AsyncStorage
-            let profilePicIndex = 0;
-            try {
-              const storedPic = await AsyncStorage.getItem(`profilePic_${comment.user_id}`);
-              if (storedPic !== null) {
-                profilePicIndex = parseInt(storedPic, 10);
-              }
-            } catch (picError) {
-              console.log('Error getting profile pic for comment user:', comment.user_id);
-            }
-
-            return {
-              ...comment,
-              username: username,
-              userType: userType,
-              isExpert: isExpert,
-              profilePicIndex: profilePicIndex,
-            };
-          } catch (userError) {
-            console.log('Error fetching user data for comment:', comment.id, userError);
-            return {
-              ...comment,
-              username: `User ${comment.user_id}`,
-              userType: 'student',
-              isExpert: false,
-              profilePicIndex: 0,
-            };
-          }
-        })
-      );
-
-      setComments(commentsWithUserData);
+      setComments((commentsData || []).map(c => ({
+        ...c,
+        isExpert: c.author_type === 'EXPERT'
+      })));
     } catch (error) {
       console.error('Error fetching comments:', error);
     }
@@ -411,56 +340,28 @@ export default function BuddyConnect() {
     if (!newComment.trim() || !selectedPostForComments) return;
 
     try {
-      // Check authentication
       if (!session?.user?.id) {
-        Alert.alert('Error', 'User not authenticated. Please log in again.');
+        Alert.alert('Error', 'User not authenticated');
         return;
       }
 
-      // Get current user ID
-      let userId = studentRegNo;
-      
-      // If studentRegNo is not set, try to get from profile
-      if (!userId && profile?.registration_number) {
-        userId = String(profile.registration_number);
-        setStudentRegNo(String(profile.registration_number));
-      }
-
-      if (!userId) {
-        Alert.alert('Error', 'Unable to identify user. Please log in again.');
-        return;
-      }
-
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('post_comment')
         .insert([
           {
             post_id: selectedPostForComments.id,
-            user_id: userId,
+            profile_id: session.user.id,
+            user_id: studentRegNo, // Keep for fallback
             content: newComment.trim(),
             created_at: new Date().toISOString(),
           },
-        ])
-        .select();
+        ]);
 
-      if (error) {
-        console.error('Error adding comment:', error);
-        Alert.alert('Error', 'Failed to add comment');
-        return;
-      }
+      if (error) throw error;
 
-      // Refresh comments to get updated user data
       await fetchComments(selectedPostForComments.id);
       setNewComment('');
-
-      // Update comment count in posts
-      setPosts(prevPosts =>
-        prevPosts.map(post =>
-          post.id === selectedPostForComments.id
-            ? { ...post, comment_count: (post.comment_count || 0) + 1 }
-            : post
-        )
-      );
+      queryClient.invalidateQueries({ queryKey: ['community_posts'] });
     } catch (error) {
       console.error('Error adding comment:', error);
       Alert.alert('Error', 'Failed to add comment');
@@ -469,12 +370,9 @@ export default function BuddyConnect() {
 
 
 
-  const deletePost = async (post: any) => {
-    console.log('Delete button clicked for post ID:', post.id, 'by user:', studentRegNo);
-
-    // Check if the current user is the author of the post
-    if (post.user_id !== studentRegNo) {
-      console.log('Delete denied: User', studentRegNo, 'is not the author of post', post.id);
+  const deletePost = async (post: CommunityPost) => {
+    // Check if the current user is the author of the post (using UUID)
+    if (post.author_id !== session?.user?.id) {
       Alert.alert('Error', 'You can only delete your own posts');
       return;
     }
@@ -540,9 +438,9 @@ export default function BuddyConnect() {
 
               console.log('Successfully deleted post');
 
-              // Remove the post from local state
-              setPosts(prevPosts => prevPosts.filter(p => p.id !== post.id));
-              console.log('Post removed from local state, UI updated');
+              // Refresh posts list via invalidation
+              queryClient.invalidateQueries({ queryKey: ['community_posts'] });
+              console.log('Posts invalidated, UI will update');
               Alert.alert('Success', 'Post deleted associated data removed');
             } catch (error) {
               console.error('Error deleting post:', error);
@@ -554,7 +452,7 @@ export default function BuddyConnect() {
     );
   };
 
-  const openComments = async (post: any) => {
+  const openComments = async (post: CommunityPost) => {
     setSelectedPostForComments(post);
     setCommentsModalVisible(true);
     await fetchComments(post.id);
@@ -638,7 +536,7 @@ export default function BuddyConnect() {
               marginBottom: 10,
             }}>
               <Image
-                source={profilePics[item.profilePicIndex || 0]}
+                source={profilePics[item.author_profile_pic || 0]}
                 style={{
                   width: 40,
                   height: 40,
@@ -654,7 +552,7 @@ export default function BuddyConnect() {
                   fontWeight: 'bold',
                   color: Colors.text,
                 }}>
-                  {item.username}
+                  {item.author_name}
                 </Text>
                 <Text style={{
                   fontSize: 12,
@@ -663,7 +561,7 @@ export default function BuddyConnect() {
                   {formatRelativeTime(item.created_at)}
                 </Text>
               </View>
-              {item.user_id === studentRegNo && (
+              {item.author_id === session?.user?.id && (
                 <TouchableOpacity
                   style={{
                     padding: 8,
@@ -987,7 +885,7 @@ export default function BuddyConnect() {
                   marginBottom: 10,
                 }}>
                   <Image
-                    source={profilePics[selectedPostForComments.profilePicIndex || 0]}
+                    source={profilePics[selectedPostForComments.author_profile_pic || 0]}
                     style={{
                       width: 30,
                       height: 30,
@@ -1002,7 +900,7 @@ export default function BuddyConnect() {
                     fontWeight: 'bold',
                     color: Colors.text,
                   }}>
-                    {selectedPostForComments.username}
+                    {selectedPostForComments.author_name}
                   </Text>
                 </View>
                 {selectedPostForComments.content && (
@@ -1033,7 +931,7 @@ export default function BuddyConnect() {
                     marginBottom: 5,
                   }}>
                     <Image
-                      source={profilePics[item.profilePicIndex || 0]}
+                      source={profilePics[item.author_profile_pic || 0]}
                       style={{
                         width: 25,
                         height: 25,
@@ -1049,7 +947,7 @@ export default function BuddyConnect() {
                         fontWeight: 'bold',
                         color: item.isExpert ? '#7b1fa2' : Colors.text,
                       }}>
-                        {item.username}
+                        {item.author_name}
                       </Text>
                       {item.isExpert && (
                         <View style={{

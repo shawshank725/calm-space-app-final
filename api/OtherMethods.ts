@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { supabase } from "@/lib/supabase";
 import { router } from "expo-router";
 import Toast from "react-native-toast-message";
@@ -5,6 +6,7 @@ import Toast from "react-native-toast-message";
 export const handleLogout = async () => {
   const { error } = await supabase.auth.signOut();
   if (error) {
+    logger.error("Logout failed", error);
     Toast.show({
       type: 'error',
       text1: 'Could not log out',
@@ -12,7 +14,7 @@ export const handleLogout = async () => {
       visibilityTime: 2000
     });
   } else {
-    console.log("Logged out");
+    logger.info("User logged out");
     router.replace("/");
     Toast.show({
       type: 'success',

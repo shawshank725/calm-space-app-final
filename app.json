@@ -16,7 +16,6 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.calmspace.helpdeskapp",
-      "privacyPolicyUrl": "https://calmspace.helpdeskapp.com/privacy-policy",
       "infoPlist": {
         "UIBackgroundModes": [
           "remote-notification"
@@ -25,8 +24,6 @@
     },
     "android": {
       "package": "com.calmspace.helpdeskapp",
-      "privacyPolicyUrl": "https://calmspace.helpdeskapp.com/privacy-policy",
-      "enableProguardInReleaseBuilds": true,
       "permissions": [
         "android.permission.MODIFY_AUDIO_SETTINGS",
         "android.permission.POST_NOTIFICATIONS",
@@ -102,7 +99,11 @@
       "expo-audio",
       "expo-video",
       "expo-secure-store",
-      "expo-asset"
+      "expo-asset",
+      "@react-native-community/datetimepicker",
+      "expo-image",
+      "expo-localization",
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true

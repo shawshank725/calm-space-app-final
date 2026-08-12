@@ -46,7 +46,7 @@ export default function ExpertChatPage() {
                     filter: `or(and(sender_id.eq.${profile.id},receiver_id.eq.${studentProfile?.id}),and(sender_id.eq.${studentProfile?.id},receiver_id.eq.${profile.id}))`,
                 },
                 (payload) => {
-                    console.log('New message received:', payload);
+                    console.log('New message received');
                     const newMessage = payload.new as ChatMessage;
 
                     // Prevent duplicate messages

@@ -70,7 +70,7 @@ export default function ExpertClientPage() {
           filter: `expert_id=eq.${profile.id}`,
         },
         (payload) => {
-          console.log('Session request changed:', payload);
+          console.log('Session request changed');
           // Reload data immediately on any change
           loadSessionRequests();
         }
@@ -111,7 +111,7 @@ export default function ExpertClientPage() {
         setSessionRequests([]);
         setFilteredSessions([]);
       } else if (sessionsData) {
-        console.log('Successfully loaded session requests:', sessionsData.length);
+        console.log('Successfully loaded sessions');
         const transformedSessions: SessionRequest[] = sessionsData.map(session => ({
   id: session.id,
   student_id: session.student_id,

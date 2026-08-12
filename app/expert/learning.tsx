@@ -30,7 +30,7 @@ export default function LearningSupport() {
             table: 'library'
           },
           (payload) => {
-            console.log('Library resource change detected:', payload);
+            console.log('Library resource change detected');
             // Reload resources when changes occur
             refetchResources();
           }

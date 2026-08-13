@@ -1,0 +1,10 @@
+.expo/
+node_modules/
+.git/
+.vscode/
+.idea/
+*.log
+coverage/
+dist/
+build/
+.DS_Store

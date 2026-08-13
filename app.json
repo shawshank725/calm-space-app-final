@@ -10,9 +10,7 @@
       "fallbackToCacheTimeout": 0,
       "url": "https://u.expo.dev/766744c8-deca-4ae4-b33e-04085a5d31b2"
     },
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": "1.0.1",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.calmspace.helpdeskapp",

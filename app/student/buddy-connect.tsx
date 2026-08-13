@@ -10,6 +10,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '@/providers/AuthProvider';
 import { useProfile } from '@/api/Profile';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { CommunityPost, PostComment } from '@/types/Community';
 
 const profilePics = [
   require('@/assets/images/profile/pic1.png'),
@@ -39,7 +40,6 @@ export default function BuddyConnect() {
   const [isPosting, setIsPosting] = useState(false);
   const [studentRegNo, setStudentRegNo] = useState('');
   const [commentsModalVisible, setCommentsModalVisible] = useState(false);
-import { CommunityPost, PostComment } from '@/types/Community';
 
 // ... inside BuddyConnect component
   const [selectedPostForComments, setSelectedPostForComments] = useState<CommunityPost | null>(null);
